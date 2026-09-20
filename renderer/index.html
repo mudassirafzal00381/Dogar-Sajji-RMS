@@ -301,37 +301,24 @@ tr:hover td{background:rgba(201,168,76,.04)}
     <h1>Dogar Sajji</h1>
     <p>Restaurant Management System</p>
   </div>
-  <div class="login-card">
-    <h2>Sign in to your account</h2>
+  <div class="login-card" style="text-align:center;max-width:440px;padding:2rem 1.8rem">
+    <h2 style="margin-bottom:0.5rem">Select Your Role to Sign In</h2>
+    <p style="color:var(--text2);font-size:0.85rem;margin-bottom:1.5rem">Click your assigned role button below to access the system</p>
     
-    <!-- VISIBLE LOGIN ERROR CONTAINER -->
     <div id="login-error-msg" style="display:none;background:rgba(239,68,68,0.2);border:1px solid var(--red);color:#FF8080;font-size:.85rem;padding:.6rem .8rem;border-radius:8px;margin-bottom:1rem;text-align:center;font-weight:500"></div>
 
-    <div class="form-group">
-      <label>Username</label>
-      <input type="text" id="username" placeholder="admin, order1, or order2" value="" onkeydown="if(event.key==='Enter')doLogin()">
-    </div>
-    <div class="form-group">
-      <label>Password</label>
-      <input type="password" id="password" placeholder="Enter password (e.g. 1234)" value="" onkeydown="if(event.key==='Enter')doLogin()">
-    </div>
+    <div style="display:flex;flex-direction:column;gap:0.85rem">
+      <button type="button" class="btn" style="width:100%;padding:1rem;font-size:1.05rem;font-weight:700;background:var(--gold);color:#000;display:flex;align-items:center;justify-content:center;gap:0.6rem;border-radius:10px;cursor:pointer;box-shadow:0 4px 12px rgba(245,158,11,0.25)" onclick="quickLogin('admin')">
+        <span style="font-size:1.3rem">👑</span> Manager / Admin Sign In
+      </button>
 
-    <button class="btn" style="width:100%;margin-bottom:0.75rem;padding:0.75rem;font-size:1rem;font-weight:bold;background:var(--gold);color:#000" onclick="doLogin()">Sign In</button>
+      <button type="button" class="btn" style="width:100%;padding:0.9rem;font-size:0.98rem;font-weight:600;background:var(--surface2);border:1px solid var(--border);color:var(--text1);display:flex;align-items:center;justify-content:center;gap:0.6rem;border-radius:10px;cursor:pointer" onclick="quickLogin('order1')">
+        <span style="font-size:1.2rem">📋</span> Order Taker 1 Sign In
+      </button>
 
-    <div style="text-align:center;margin:0.6rem 0;color:var(--text2);font-size:0.78rem;letter-spacing:1px;font-weight:600">⚡ ONE-CLICK QUICK SIGN IN</div>
-
-    <div style="display:flex;gap:0.5rem;margin-bottom:1.2rem">
-      <button type="button" class="btn" style="flex:1;background:var(--surface2);border:1px solid var(--gold);color:var(--gold);font-weight:bold;padding:0.6rem;font-size:0.8rem;cursor:pointer" onclick="quickLogin('admin')">👑 Admin</button>
-      <button type="button" class="btn" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text1);padding:0.6rem;font-size:0.8rem;cursor:pointer" onclick="quickLogin('order1')">📋 Order 1</button>
-      <button type="button" class="btn" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text1);padding:0.6rem;font-size:0.8rem;cursor:pointer" onclick="quickLogin('order2')">📋 Order 2</button>
-    </div>
-
-    <!-- DEFAULT ACCOUNTS HINT -->
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;font-size:.78rem;color:var(--text2)">
-      <div style="font-weight:600;color:var(--gold);margin-bottom:.3rem">🔑 Default Login Accounts:</div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:.2rem"><span>• <strong>admin</strong> (Manager)</span><code style="color:var(--gold)">1234</code></div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:.2rem"><span>• <strong>order1</strong> (Order Taker 1)</span><code style="color:var(--gold)">1234</code></div>
-      <div style="display:flex;justify-content:space-between"><span>• <strong>order2</strong> (Order Taker 2)</span><code style="color:var(--gold)">1234</code></div>
+      <button type="button" class="btn" style="width:100%;padding:0.9rem;font-size:0.98rem;font-weight:600;background:var(--surface2);border:1px solid var(--border);color:var(--text1);display:flex;align-items:center;justify-content:center;gap:0.6rem;border-radius:10px;cursor:pointer" onclick="quickLogin('order2')">
+        <span style="font-size:1.2rem">📋</span> Order Taker 2 Sign In
+      </button>
     </div>
   </div>
 </div>
@@ -574,56 +561,19 @@ let appUsers = [
 
 async function loadAppUsers(){
   if (!Array.isArray(appUsers)) appUsers = [];
-
-  try {
-    if (window.api && window.api.getAppUsers) {
-      const dbUsers = await window.api.getAppUsers();
-      if (Array.isArray(dbUsers) && dbUsers.length > 0) appUsers = dbUsers;
-    } else {
-      const lsUsers = localStorage.getItem('appUsers');
-      if (lsUsers) {
-        try {
-          const parsed = JSON.parse(lsUsers);
-          if (Array.isArray(parsed) && parsed.length > 0) appUsers = parsed;
-        } catch(e){}
-      }
-    }
-  } catch(e) {
-    console.warn('App users load error:', e);
-  }
-
-  const defaults = [
-    { username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin / Manager' },
-    { username: 'order1', password: '1234', role: 'Order Taker', name: 'Order Taker 1' },
-    { username: 'order2', password: '1234', role: 'Order Taker', name: 'Order Taker 2' }
-  ];
-
-  defaults.forEach(def => {
-    const existing = appUsers.find(u => String(u.username).toLowerCase() === def.username.toLowerCase());
-    if (!existing) {
-      appUsers.push(def);
-    } else {
-      existing.password = String(existing.password || '1234');
-    }
-  });
-
   const adminUser = appUsers.find(u => String(u.username).toLowerCase() === 'admin');
   if (adminUser && typeof ADMIN_CREDENTIALS !== 'undefined') {
     ADMIN_CREDENTIALS.username = adminUser.username;
-    ADMIN_CREDENTIALS.password = String(adminUser.password);
+    ADMIN_CREDENTIALS.password = String(adminUser.password || '1234');
   }
 }
 
 function showLoginError(msg) {
   const errBox = document.getElementById('login-error-msg');
   if (errBox) {
-    errBox.innerHTML = '<strong>⚠️ Login Failed:</strong> ' + msg;
+    errBox.innerHTML = '<strong>⚠️ Alert:</strong> ' + msg;
     errBox.style.display = 'block';
   }
-  const loginScr = document.getElementById('login-screen');
-  const appScr = document.getElementById('app');
-  if (loginScr) loginScr.style.display = 'flex';
-  if (appScr) appScr.style.display = 'none';
   if (typeof toast === 'function') toast(msg, 'error');
 }
 
@@ -635,11 +585,6 @@ function quickLogin(accountType) {
   };
   const target = accountMap[accountType] || accountMap['admin'];
   
-  const uEl = document.getElementById('username');
-  if (uEl) uEl.value = target.username;
-  const pEl = document.getElementById('password');
-  if (pEl) pEl.value = '1234';
-  
   currentUser = target.username;
   currentRole = target.role;
   if (typeof ADMIN_CREDENTIALS !== 'undefined') {
@@ -649,6 +594,7 @@ function quickLogin(accountType) {
 
   const userDisp = document.getElementById('user-display');
   if (userDisp) userDisp.textContent = target.name;
+
   const roleDisp = document.getElementById('role-display');
   if (roleDisp) roleDisp.textContent = currentRole;
 
@@ -662,102 +608,19 @@ function quickLogin(accountType) {
 
   const targetSec = (currentRole === 'Order Taker') ? 'orders' : 'dashboard';
   if (typeof showSection === 'function') showSection(targetSec);
+
+  if (typeof migrateLocalStorageIfNeeded === 'function') {
+    migrateLocalStorageIfNeeded().catch(e => console.warn('Migration:', e));
+  }
+  if (typeof loadFromLocal === 'function') {
+    loadFromLocal().catch(e => console.warn('Load local error:', e));
+  }
+
   if (typeof toast === 'function') toast(`Welcome ${target.name}!`, 'success');
 }
 
 async function doLogin(){
-  const errBox = document.getElementById('login-error-msg');
-  if (errBox) { errBox.style.display = 'none'; errBox.innerHTML = ''; }
-
-  try {
-    await loadAppUsers().catch(e => console.warn('loadAppUsers warn:', e));
-    const uInput = (document.getElementById('username')?.value || '').trim();
-    const pInput = (document.getElementById('password')?.value || '').trim();
-
-    if (!uInput) {
-      showLoginError('Please enter a username or click ⚡ One-Click Quick Sign In');
-      return;
-    }
-    if (!pInput) {
-      showLoginError('Please enter a password (Default: 1234)');
-      return;
-    }
-
-    let user = appUsers.find(u => String(u.username).toLowerCase() === uInput.toLowerCase());
-
-    // Fallback search for default accounts
-    if (!user) {
-      const defaults = [
-        { username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin / Manager' },
-        { username: 'order1', password: '1234', role: 'Order Taker', name: 'Order Taker 1' },
-        { username: 'order2', password: '1234', role: 'Order Taker', name: 'Order Taker 2' }
-      ];
-      user = defaults.find(d => d.username.toLowerCase() === uInput.toLowerCase());
-    }
-
-    if (!user) {
-      // Emergency bypass: if user entered admin, order1, order2, or manager, allow login as that role
-      if (['admin', 'manager'].includes(uInput.toLowerCase())) {
-        quickLogin('admin');
-        return;
-      } else if (uInput.toLowerCase().startsWith('order1')) {
-        quickLogin('order1');
-        return;
-      } else if (uInput.toLowerCase().startsWith('order2')) {
-        quickLogin('order2');
-        return;
-      }
-      showLoginError(`User "${uInput}" not found. Click one of the ⚡ Quick Sign In buttons below.`);
-      return;
-    }
-
-    // Master password bypass: '1234', 'admin', or match
-    const isMasterPass = ['1234', 'admin', 'password'].includes(pInput.toLowerCase());
-    const isPassMatch = (String(user.password).trim() === pInput);
-
-    if (!isPassMatch && !isMasterPass) {
-      showLoginError(`Incorrect password for "${user.username}". Use password "1234" or click ⚡ Quick Sign In.`);
-      return;
-    }
-
-    currentUser = user.username;
-    currentRole = user.role || 'Admin';
-    if (typeof ADMIN_CREDENTIALS !== 'undefined') {
-      ADMIN_CREDENTIALS.username = user.username;
-      ADMIN_CREDENTIALS.password = String(user.password || '1234');
-    }
-
-    const userDisp = document.getElementById('user-display');
-    if (userDisp) userDisp.textContent = user.name || user.username;
-
-    const roleDisp = document.getElementById('role-display');
-    if (roleDisp) roleDisp.textContent = currentRole;
-
-    if (typeof buildNav === 'function') buildNav();
-
-    const loginScr = document.getElementById('login-screen');
-    if (loginScr) loginScr.style.display = 'none';
-
-    const appScr = document.getElementById('app');
-    if (appScr) appScr.style.display = 'flex';
-
-    const targetSec = (currentRole === 'Order Taker') ? 'orders' : 'dashboard';
-    if (typeof showSection === 'function') showSection(targetSec);
-
-    if (typeof migrateLocalStorageIfNeeded === 'function') {
-      await migrateLocalStorageIfNeeded().catch(e => console.warn('Migration:', e));
-    }
-    if (typeof loadFromLocal === 'function') {
-      await loadFromLocal().catch(e => console.warn('Load local error:', e));
-    }
-
-    if (typeof showSection === 'function') showSection(activeSection || targetSec);
-    if (typeof toast === 'function') toast(`Welcome ${user.name || user.username}!`, 'success');
-  } catch (err) {
-    console.error('Login error:', err);
-    // Emergency fallback to quick login on error
-    quickLogin('admin');
-  }
+  quickLogin('admin');
 }
 
 function doLogout(){
