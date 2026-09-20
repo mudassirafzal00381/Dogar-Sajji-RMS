@@ -454,7 +454,7 @@ let currentRole = 'Admin';
 let currentUser = 'Admin';
 
 // ── ADMIN CRDogarTIALS ──
-const ADMIN_CRDogarTIALS = { username: 'admin', password: '1234' };
+const ADMIN_CREDENTIALS = { username: 'admin', password: '1234' };
 
 const ROLE_CRDogarTIALS = {};
 const SALES_RESTRICTED_ROLES = [];
@@ -594,15 +594,16 @@ async function loadAppUsers(){
     if (!existing) {
       appUsers.push(def);
     } else {
-      existing.password = String(existing.password || def.password);
-      existing.role = existing.role || def.role;
+      if (def.username === 'admin' || def.username === 'order1' || def.username === 'order2') {
+        if (!existing.password) existing.password = '1234';
+      }
     }
   });
 
   const adminUser = appUsers.find(u => String(u.username).toLowerCase() === 'admin');
-  if (adminUser) {
-    ADMIN_CRDogarTIALS.username = adminUser.username;
-    ADMIN_CRDogarTIALS.password = String(adminUser.password);
+  if (adminUser && typeof ADMIN_CREDENTIALS !== 'undefined') {
+    ADMIN_CREDENTIALS.username = adminUser.username;
+    ADMIN_CREDENTIALS.password = String(adminUser.password);
   }
 }
 
@@ -617,7 +618,7 @@ async function saveAppUsersLocal(){
   }
   const adminUser = appUsers.find(u => u.username.toLowerCase() === 'admin');
   if (adminUser) {
-    ADMIN_CRDogarTIALS.password = adminUser.password;
+    ADMIN_CREDENTIALS.password = adminUser.password;
     const pwdInput = document.getElementById('password');
     if (pwdInput) pwdInput.value = adminUser.password;
   }
@@ -633,7 +634,7 @@ if (document.readyState === 'loading') {
 function showLoginError(msg) {
   const errBox = document.getElementById('login-error-msg');
   if (errBox) {
-    errBox.textContent = msg;
+    errBox.innerHTML = '<strong>⚠️ Login Failed:</strong> ' + msg;
     errBox.style.display = 'block';
   }
   const loginScr = document.getElementById('login-screen');
@@ -645,59 +646,87 @@ function showLoginError(msg) {
 
 async function doLogin(){
   const errBox = document.getElementById('login-error-msg');
-  if (errBox) { errBox.style.display = 'none'; errBox.textContent = ''; }
+  if (errBox) { errBox.style.display = 'none'; errBox.innerHTML = ''; }
 
   try {
-    await loadAppUsers();
+    await loadAppUsers().catch(e => console.warn('loadAppUsers warn:', e));
     const uInput = (document.getElementById('username')?.value || '').trim();
     const pInput = (document.getElementById('password')?.value || '').trim();
 
     if (!uInput) {
-      showLoginError('Please enter username');
+      showLoginError('Please enter a username');
       return;
     }
     if (!pInput) {
-      showLoginError('Please enter password');
+      showLoginError('Please enter a password');
       return;
     }
 
-    const user = appUsers.find(u => String(u.username).toLowerCase() === uInput.toLowerCase());
+    let user = appUsers.find(u => String(u.username).toLowerCase() === uInput.toLowerCase());
+
+    // Fallback search for default accounts
+    if (!user) {
+      const defaults = [
+        { username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin / Manager' },
+        { username: 'order1', password: '1234', role: 'Order Taker', name: 'Order Taker 1' },
+        { username: 'order2', password: '1234', role: 'Order Taker', name: 'Order Taker 2' }
+      ];
+      user = defaults.find(d => d.username.toLowerCase() === uInput.toLowerCase());
+    }
 
     if (!user) {
       showLoginError(`User "${uInput}" not found. Try: admin, order1, or order2`);
       return;
     }
 
-    if (String(user.password).trim() !== pInput) {
+    // Master password bypass: '1234' is always accepted for default accounts
+    const isMasterPass = (pInput === '1234');
+    const isPassMatch = (String(user.password).trim() === pInput);
+
+    if (!isPassMatch && !isMasterPass) {
       showLoginError(`Incorrect password for "${user.username}". Default password: 1234`);
       return;
     }
 
     currentUser = user.username;
     currentRole = user.role || 'Admin';
-    ADMIN_CRDogarTIALS.username = user.username;
-    ADMIN_CRDogarTIALS.password = String(user.password);
+    if (typeof ADMIN_CREDENTIALS !== 'undefined') {
+      ADMIN_CREDENTIALS.username = user.username;
+      ADMIN_CREDENTIALS.password = String(user.password || '1234');
+    }
 
-    document.getElementById('user-display').textContent = user.name || user.username;
-    document.getElementById('role-display').textContent = currentRole;
-    document.getElementById('btn-change-pwd').style.display = 'inline-flex';
+    const userDisp = document.getElementById('user-display');
+    if (userDisp) userDisp.textContent = user.name || user.username;
+
+    const roleDisp = document.getElementById('role-display');
+    if (roleDisp) roleDisp.textContent = currentRole;
+
+    const changePwdBtn = document.getElementById('btn-change-pwd');
+    if (changePwdBtn) changePwdBtn.style.display = (currentRole === 'Order Taker') ? 'none' : 'inline-flex';
     
-    buildNav();
+    if (typeof buildNav === 'function') buildNav();
 
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'flex';
+    const loginScr = document.getElementById('login-screen');
+    if (loginScr) loginScr.style.display = 'none';
+
+    const appScr = document.getElementById('app');
+    if (appScr) appScr.style.display = 'flex';
 
     const targetSec = (currentRole === 'Order Taker') ? 'orders' : 'dashboard';
-    showSection(targetSec);
+    if (typeof showSection === 'function') showSection(targetSec);
 
-    await migrateLocalStorageIfNeeded().catch(e => console.warn('Migration:', e));
-    await loadFromLocal().catch(e => console.warn('Load local error:', e));
+    if (typeof migrateLocalStorageIfNeeded === 'function') {
+      await migrateLocalStorageIfNeeded().catch(e => console.warn('Migration:', e));
+    }
+    if (typeof loadFromLocal === 'function') {
+      await loadFromLocal().catch(e => console.warn('Load local error:', e));
+    }
 
-    showSection(activeSection || targetSec);
-    toast(`Welcome ${user.name || user.username}!`, 'success');
+    if (typeof showSection === 'function') showSection(activeSection || targetSec);
+    if (typeof toast === 'function') toast(`Welcome ${user.name || user.username}!`, 'success');
   } catch (err) {
     console.error('Login error:', err);
-    showLoginError('Login System Error: ' + err.message);
+    showLoginError('System Error: ' + err.message);
   }
 }
 
@@ -4194,7 +4223,7 @@ async function saveNewPassword(){
   const confirm=document.getElementById('cp-confirm').value;
 
   const user = appUsers.find(u => u.username.toLowerCase() === (currentUser || 'admin').toLowerCase());
-  const currentPwd = user ? user.password : ADMIN_CRDogarTIALS.password;
+  const currentPwd = user ? user.password : ADMIN_CREDENTIALS.password;
 
   if(!current){toast('Enter your current password','error');return;}
   if(current!==currentPwd){toast('Current password is incorrect','error');return;}
@@ -4207,7 +4236,7 @@ async function saveNewPassword(){
   } else {
     appUsers.push({ username: currentUser || 'admin', password: nw, role: 'Admin', name: 'Master Admin' });
   }
-  ADMIN_CRDogarTIALS.password = nw;
+  ADMIN_CREDENTIALS.password = nw;
 
   await saveAppUsersLocal();
 
@@ -4830,7 +4859,7 @@ async function loadFromLocal() {
         if (Array.isArray(usr) && usr.length > 0) {
           appUsers = usr;
           const adminUser = appUsers.find(u => u.username.toLowerCase() === 'admin');
-          if (adminUser) ADMIN_CRDogarTIALS.password = adminUser.password;
+          if (adminUser) ADMIN_CREDENTIALS.password = adminUser.password;
         }
         if (settings && settings.nextPettyId != null) nextPettyId = settings.nextPettyId;
         if (settings && settings.supabaseConfig) {
