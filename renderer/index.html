@@ -305,14 +305,25 @@ tr:hover td{background:rgba(201,168,76,.04)}
     <h2>Sign in to your account</h2>
     <div class="form-group">
       <label>Username</label>
-      <input type="text" id="username" placeholder="Enter username" value="admin" onkeydown="if(event.key==='Enter')doLogin()">
+      <input type="text" id="username" placeholder="admin, order1, or order2" value="admin" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <div class="form-group">
       <label>Password</label>
-      <input type="password" id="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+      <input type="password" id="password" placeholder="••••••••" value="1234" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
+
+    <!-- VISIBLE LOGIN ERROR CONTAINER -->
+    <div id="login-error-msg" style="display:none;background:rgba(239,68,68,0.2);border:1px solid var(--red);color:#FF8080;font-size:.85rem;padding:.6rem .8rem;border-radius:8px;margin-bottom:1rem;text-align:center;font-weight:500"></div>
+
     <button class="btn" onclick="doLogin()">Sign In</button>
-    <p style="font-size:.75rem;color:var(--text3);text-align:center;margin-top:1rem">Cloud & Local Network Mode</p>
+
+    <!-- DEFAULT ACCOUNTS HINT -->
+    <div style="margin-top:1.2rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem;font-size:.78rem;color:var(--text2)">
+      <div style="font-weight:600;color:var(--gold);margin-bottom:.3rem">🔑 Default Login Accounts:</div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:.2rem"><span>• <strong>admin</strong> (Manager)</span><code style="color:var(--gold)">1234</code></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:.2rem"><span>• <strong>order1</strong> (Order Taker 1)</span><code style="color:var(--gold)">1234</code></div>
+      <div style="display:flex;justify-content:space-between"><span>• <strong>order2</strong> (Order Taker 2)</span><code style="color:var(--gold)">1234</code></div>
+    </div>
   </div>
 </div>
 
@@ -560,20 +571,31 @@ async function loadAppUsers(){
     } else {
       const lsUsers = localStorage.getItem('appUsers');
       if (lsUsers) {
-        try { appUsers = JSON.parse(lsUsers); } catch(e){}
+        try {
+          const parsed = JSON.parse(lsUsers);
+          if (Array.isArray(parsed) && parsed.length > 0) appUsers = parsed;
+        } catch(e){}
       }
     }
   } catch(e) {
     console.warn('App users load error:', e);
   }
-  // Sync admin crDogartials and login screen with loaded database password
+
+  const defaults = [
+    { username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin / Manager' },
+    { username: 'order1', password: '1234', role: 'Order Taker', name: 'Order Taker 1' },
+    { username: 'order2', password: '1234', role: 'Order Taker', name: 'Order Taker 2' }
+  ];
+
+  defaults.forEach(def => {
+    if (!appUsers.some(u => u.username.toLowerCase() === def.username.toLowerCase())) {
+      appUsers.push(def);
+    }
+  });
+
   const adminUser = appUsers.find(u => u.username.toLowerCase() === 'admin');
   if (adminUser) {
     ADMIN_CRDogarTIALS.password = adminUser.password;
-    const pwdInput = document.getElementById('password');
-    if (pwdInput && !pwdInput.value) {
-      pwdInput.value = adminUser.password;
-    }
   }
 }
 
@@ -601,19 +623,42 @@ if (document.readyState === 'loading') {
 }
 
 // ── LOGIN ──
+function showLoginError(msg) {
+  const errBox = document.getElementById('login-error-msg');
+  if (errBox) {
+    errBox.textContent = msg;
+    errBox.style.display = 'block';
+  }
+  if (typeof toast === 'function') toast(msg, 'error');
+}
+
 async function doLogin(){
+  const errBox = document.getElementById('login-error-msg');
+  if (errBox) { errBox.style.display = 'none'; errBox.textContent = ''; }
+
   try {
     await loadAppUsers();
     const uInput = (document.getElementById('username')?.value || '').trim();
     const pInput = document.getElementById('password')?.value || '';
 
-    if (!uInput) { toast('Please enter username', 'error'); return; }
-    if (!pInput) { toast('Please enter password', 'error'); return; }
+    if (!uInput) {
+      showLoginError('Please enter username');
+      return;
+    }
+    if (!pInput) {
+      showLoginError('Please enter password');
+      return;
+    }
 
     const user = appUsers.find(u => u.username.toLowerCase() === uInput.toLowerCase());
 
-    if (!user || user.password !== pInput) {
-      toast('Invalid username or password', 'error');
+    if (!user) {
+      showLoginError(`User "${uInput}" not found. Try username: admin, order1, or order2`);
+      return;
+    }
+
+    if (user.password !== pInput) {
+      showLoginError(`Incorrect password for "${user.username}". Default password is 1234`);
       return;
     }
 
@@ -633,12 +678,11 @@ async function doLogin(){
 
     await migrateLocalStorageIfNeeded().catch(e => console.warn('Migration:', e));
     await loadFromLocal();
-    showSection(activeSection || 'dashboard');
-    loadFromServer().then(() => showSection(activeSection || 'dashboard')).catch(() => {});
+    showSection(activeSection || (currentRole === 'Order Taker' ? 'orders' : 'dashboard'));
     toast(`Welcome ${user.name || user.username}!`, 'success');
   } catch (err) {
     console.error('Login error:', err);
-    toast('Login error: ' + err.message, 'error');
+    showLoginError('Login error: ' + err.message);
   }
 }
 
