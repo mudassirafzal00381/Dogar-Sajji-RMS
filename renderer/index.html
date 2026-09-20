@@ -331,6 +331,7 @@ tr:hover td{background:rgba(201,168,76,.04)}
         <span id="user-display">Admin</span>
         <span class="user-role" id="role-display">admin</span>
       </div>
+      <button class="icon-btn" onclick="resetToDogarSajjiMenu()" title="Reset Menu to Official Sajji Menu" style="border-color:var(--gold);color:var(--gold2)">🍗 Sync Sajji Menu</button>
       <button class="icon-btn" id="btn-cloud-sync" onclick="openCloudConfigModal()" title="Cloud Database Synchronization Settings" style="border-color:var(--gold)">☁️ Cloud DB</button>
       <button class="icon-btn" id="btn-printer-settings" onclick="openPrinterSettings()" title="Thermal Receipt Printer Settings">🖨 Printer</button>
       <button class="icon-btn" id="btn-db-backup" onclick="performDbBackup()" title="Backup Database File">💾 Backup Data</button>
@@ -4600,6 +4601,66 @@ async function saveToLocal() {
     }
   } catch(e) { console.warn('Database save warning:', e); }
 }
+
+
+const OFFICIAL_DOGAR_CATEGORIES = [
+  "Sajji With Rice (چاول کے ساتھ)",
+  "Sajji Without Rice (چاول کے بغیر)",
+  "Rice Sides (چاول)",
+  "Raita & Salads (رائتہ)",
+  "Cold Drinks & Water (کولڈ ڈرنکس)"
+];
+
+const OFFICIAL_DOGAR_ITEMS = [
+  { id: 1, name: "Full Sajji with Rice (فل سجی باچاول)", cat: "Sajji With Rice (چاول کے ساتھ)", price: 1950, discount: 0, desc: "Delicious full roasted chicken sajji served with aromatic rice", img: "🍗", available: true, variants: [] },
+  { id: 2, name: "Half Sajji with Rice (ہاف سجی باچاول)", cat: "Sajji With Rice (چاول کے ساتھ)", price: 1050, discount: 0, desc: "Half roasted chicken sajji served with aromatic rice", img: "🍗", available: true, variants: [] },
+  { id: 3, name: "Quarter Sajji with Rice (کوارٹر سجی باچاول)", cat: "Sajji With Rice (چاول کے ساتھ)", price: 600, discount: 0, desc: "Quarter roasted chicken sajji served with aromatic rice", img: "🍗", available: true, variants: [] },
+  { id: 4, name: "Full Sajji without Rice (فل سجی بغیر چاول)", cat: "Sajji Without Rice (چاول کے بغیر)", price: 1600, discount: 0, desc: "Traditional full roasted chicken sajji", img: "🍗", available: true, variants: [] },
+  { id: 5, name: "Half Sajji without Rice (ہاف سجی بغیر چاول)", cat: "Sajji Without Rice (چاول کے بغیر)", price: 800, discount: 0, desc: "Traditional half roasted chicken sajji", img: "🍗", available: true, variants: [] },
+  { id: 6, name: "Quarter Sajji without Rice (کوارٹر سجی بغیر چاول)", cat: "Sajji Without Rice (چاول کے بغیر)", price: 400, discount: 0, desc: "Traditional quarter roasted chicken sajji", img: "🍗", available: true, variants: [] },
+  { id: 7, name: "Full Rice (فل چاول)", cat: "Rice Sides (چاول)", price: 400, discount: 0, desc: "Full portion of specially seasoned sajji rice", img: "🍚", available: true, variants: [] },
+  { id: 8, name: "Half Rice (ہاف چاول)", cat: "Rice Sides (چاول)", price: 250, discount: 0, desc: "Half portion of specially seasoned sajji rice", img: "🍚", available: true, variants: [] },
+  { id: 9, name: "Fresh Raita (رائتہ)", cat: "Raita & Salads (رائتہ)", price: 70, discount: 0, desc: "Fresh mint & zeera raita", img: "🥣", available: true, variants: [] },
+  { id: 10, name: "Half Mineral Water (ہاف واٹر)", cat: "Cold Drinks & Water (کولڈ ڈرنکس)", price: 60, discount: 0, desc: "500ml Mineral Water", img: "💧", available: true, variants: [] },
+  { id: 11, name: "Full Mineral Water (فل واٹر)", cat: "Cold Drinks & Water (کولڈ ڈرنکس)", price: 120, discount: 0, desc: "1.5 Liter Mineral Water", img: "💧", available: true, variants: [] },
+  { id: 12, name: "Drink (1.5 Liter)", cat: "Cold Drinks & Water (کولڈ ڈرنکس)", price: 210, discount: 0, desc: "1.5 Liter Chilled Soft Drink", img: "🥤", available: true, variants: [] },
+  { id: 13, name: "Drink (1 Liter)", cat: "Cold Drinks & Water (کولڈ ڈرنکس)", price: 170, discount: 0, desc: "1.0 Liter Chilled Soft Drink", img: "🥤", available: true, variants: [] },
+  { id: 14, name: "Drink (NR Regular)", cat: "Cold Drinks & Water (کولڈ ڈرنکس)", price: 80, discount: 0, desc: "Regular NR Chilled Beverage", img: "🥤", available: true, variants: [] }
+];
+
+const OFFICIAL_DOGAR_DEALS = [
+  { id: 1, name: 'Full Sajji Deal with Rice & Raita', category: 'Special Sajji Deals', price: 2020, available: true, items: ['1x Full Sajji with Rice', '1x Fresh Raita'] },
+  { id: 2, name: 'Half Sajji Deal with Rice & Raita', category: 'Special Sajji Deals', price: 1120, available: true, items: ['1x Half Sajji with Rice', '1x Fresh Raita'] }
+];
+
+async function resetToDogarSajjiMenu() {
+  menuCategories = OFFICIAL_DOGAR_CATEGORIES;
+  menuItems = OFFICIAL_DOGAR_ITEMS;
+  deals = OFFICIAL_DOGAR_DEALS;
+
+  ['hfc_menu_items','db_menu_items','menu_items','menu_categories','deals'].forEach(k => localStorage.removeItem(k));
+
+  if (supabaseClient) {
+    try {
+      await Promise.all([
+        supabaseClient.from('menu_items').delete().neq('id', -1),
+        supabaseClient.from('menu_categories').delete().neq('id', -1),
+        supabaseClient.from('deals').delete().neq('id', -1)
+      ]);
+      await saveToLocal();
+      if (typeof showToast === 'function') showToast('⚡ Supabase Cloud DB successfully reset to Dogar Sajji Menu!', 'success');
+    } catch(e) {
+      console.warn('Supabase reset warning:', e);
+    }
+  } else {
+    await saveToLocal();
+    if (typeof showToast === 'function') showToast('⚡ Menu reset to Dogar Sajji Menu!', 'success');
+  }
+
+  if (typeof renderMenu === 'function') renderMenu();
+  if (typeof renderOrders === 'function') renderOrders();
+}
+
 
 async function loadFromLocal() {
   try {
