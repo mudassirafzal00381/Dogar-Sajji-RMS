@@ -75,7 +75,7 @@ function registerIpcHandlers(db) {
       try {
         const today = new Date().toISOString().split('T')[0];
         const { canceled, filePath } = await dialog.showSaveDialog({
-          title: "Backup Eden's Crust Database",
+          title: "Backup Dogar Sajji Database",
           defaultPath: `edens-crust-backup-${today}.db`,
           filters: [
             { name: 'SQLite Database', extensions: ['db', 'sqlite'] },

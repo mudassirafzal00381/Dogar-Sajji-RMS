@@ -997,7 +997,7 @@ function renderVariantSection(existingVariants = []){
       <span style="font-size:.72rem;color:var(--text2)">Small, Medium, Large, Family, etc.</span>
     </div>
     <div style="display:flex;gap:.4rem;margin-bottom:.65rem;flex-wrap:wrap">
-      <button type="button" class="btn-sm btn-gold" style="font-size:.75rem;padding:.2rem .5rem" onclick="applyPizzaPreset()">+ Pizza Preset (S / M / L / Family)</button>
+      <button type="button" class="btn-sm btn-gold" style="font-size:.75rem;padding:.2rem .5rem" onclick="applySizePreset()">+ Size Preset (Full / Half / Quarter)</button>
       <button type="button" class="btn-sm btn-blue" style="font-size:.75rem;padding:.2rem .5rem" onclick="applyPortionPreset()">+ Portion Preset (Half / Full)</button>
       <button type="button" class="btn-sm btn-outline" style="font-size:.75rem;padding:.2rem .5rem" onclick="addVariantRow()">+ Add Size</button>
       <button type="button" class="btn-sm btn-red" style="font-size:.75rem;padding:.2rem .5rem" onclick="clearVariants()">Clear Sizes</button>
@@ -1026,7 +1026,7 @@ function addVariantRow(label = '', price = '') {
   container.appendChild(div.firstElementChild);
 }
 
-function applyPizzaPreset() {
+function applySizePreset() {
   const container = document.getElementById('variants-list');
   if (!container) return;
   container.innerHTML = `
@@ -1069,7 +1069,7 @@ function getVariantsFromInputs() {
 function openAddItem(){
   showModal(`<h3>Add Menu Item</h3>
   <div class="form-row">
-    <div><label style="font-size:.8rem;color:var(--text2);margin-bottom:.3rem;display:block">Item Name</label><input class="input-field" style="width:100%" id="m-name" placeholder="Chicken Fajita Pizza"></div>
+    <div><label style="font-size:.8rem;color:var(--text2);margin-bottom:.3rem;display:block">Item Name</label><input class="input-field" style="width:100%" id="m-name" placeholder="Full Sajji with Rice"></div>
     <div><label style="font-size:.8rem;color:var(--text2);margin-bottom:.3rem;display:block">Category</label><select class="input-field" style="width:100%" id="m-cat">${menuCategories.map(c=>`<option>${c}</option>`).join('')}</select></div>
   </div>
   <div class="form-row">
