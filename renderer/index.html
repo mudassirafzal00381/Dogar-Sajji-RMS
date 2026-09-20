@@ -564,10 +564,12 @@ let appUsers = [
 ];
 
 async function loadAppUsers(){
+  if (!Array.isArray(appUsers)) appUsers = [];
+
   try {
     if (window.api && window.api.getAppUsers) {
       const dbUsers = await window.api.getAppUsers();
-      if (dbUsers && dbUsers.length > 0) appUsers = dbUsers;
+      if (Array.isArray(dbUsers) && dbUsers.length > 0) appUsers = dbUsers;
     } else {
       const lsUsers = localStorage.getItem('appUsers');
       if (lsUsers) {
@@ -588,14 +590,19 @@ async function loadAppUsers(){
   ];
 
   defaults.forEach(def => {
-    if (!appUsers.some(u => u.username.toLowerCase() === def.username.toLowerCase())) {
+    const existing = appUsers.find(u => String(u.username).toLowerCase() === def.username.toLowerCase());
+    if (!existing) {
       appUsers.push(def);
+    } else {
+      existing.password = String(existing.password || def.password);
+      existing.role = existing.role || def.role;
     }
   });
 
-  const adminUser = appUsers.find(u => u.username.toLowerCase() === 'admin');
+  const adminUser = appUsers.find(u => String(u.username).toLowerCase() === 'admin');
   if (adminUser) {
-    ADMIN_CRDogarTIALS.password = adminUser.password;
+    ADMIN_CRDogarTIALS.username = adminUser.username;
+    ADMIN_CRDogarTIALS.password = String(adminUser.password);
   }
 }
 
@@ -629,6 +636,10 @@ function showLoginError(msg) {
     errBox.textContent = msg;
     errBox.style.display = 'block';
   }
+  const loginScr = document.getElementById('login-screen');
+  const appScr = document.getElementById('app');
+  if (loginScr) loginScr.style.display = 'flex';
+  if (appScr) appScr.style.display = 'none';
   if (typeof toast === 'function') toast(msg, 'error');
 }
 
@@ -639,7 +650,7 @@ async function doLogin(){
   try {
     await loadAppUsers();
     const uInput = (document.getElementById('username')?.value || '').trim();
-    const pInput = document.getElementById('password')?.value || '';
+    const pInput = (document.getElementById('password')?.value || '').trim();
 
     if (!uInput) {
       showLoginError('Please enter username');
@@ -650,39 +661,43 @@ async function doLogin(){
       return;
     }
 
-    const user = appUsers.find(u => u.username.toLowerCase() === uInput.toLowerCase());
+    const user = appUsers.find(u => String(u.username).toLowerCase() === uInput.toLowerCase());
 
     if (!user) {
-      showLoginError(`User "${uInput}" not found. Try username: admin, order1, or order2`);
+      showLoginError(`User "${uInput}" not found. Try: admin, order1, or order2`);
       return;
     }
 
-    if (user.password !== pInput) {
-      showLoginError(`Incorrect password for "${user.username}". Default password is 1234`);
+    if (String(user.password).trim() !== pInput) {
+      showLoginError(`Incorrect password for "${user.username}". Default password: 1234`);
       return;
     }
 
     currentUser = user.username;
     currentRole = user.role || 'Admin';
     ADMIN_CRDogarTIALS.username = user.username;
-    ADMIN_CRDogarTIALS.password = user.password;
+    ADMIN_CRDogarTIALS.password = String(user.password);
 
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'flex';
     document.getElementById('user-display').textContent = user.name || user.username;
     document.getElementById('role-display').textContent = currentRole;
     document.getElementById('btn-change-pwd').style.display = 'inline-flex';
     
     buildNav();
-    showSection(currentRole === 'Order Taker' ? 'orders' : 'dashboard');
+
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+
+    const targetSec = (currentRole === 'Order Taker') ? 'orders' : 'dashboard';
+    showSection(targetSec);
 
     await migrateLocalStorageIfNeeded().catch(e => console.warn('Migration:', e));
-    await loadFromLocal();
-    showSection(activeSection || (currentRole === 'Order Taker' ? 'orders' : 'dashboard'));
+    await loadFromLocal().catch(e => console.warn('Load local error:', e));
+
+    showSection(activeSection || targetSec);
     toast(`Welcome ${user.name || user.username}!`, 'success');
   } catch (err) {
     console.error('Login error:', err);
-    showLoginError('Login error: ' + err.message);
+    showLoginError('Login System Error: ' + err.message);
   }
 }
 
