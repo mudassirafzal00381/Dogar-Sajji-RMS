@@ -309,11 +309,11 @@ tr:hover td{background:rgba(201,168,76,.04)}
 
     <div class="form-group">
       <label>Username</label>
-      <input type="text" id="username" placeholder="admin, order1, or order2" value="admin" onkeydown="if(event.key==='Enter')doLogin()">
+      <input type="text" id="username" placeholder="admin, order1, or order2" value="" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <div class="form-group">
       <label>Password</label>
-      <input type="password" id="password" placeholder="••••••••" value="1234" onkeydown="if(event.key==='Enter')doLogin()">
+      <input type="password" id="password" placeholder="Enter password (e.g. 1234)" value="" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
 
     <button class="btn" style="width:100%;margin-bottom:0.75rem;padding:0.75rem;font-size:1rem;font-weight:bold;background:var(--gold);color:#000" onclick="doLogin()">Sign In</button>
