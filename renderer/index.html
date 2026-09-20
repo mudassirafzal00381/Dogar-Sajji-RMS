@@ -4639,13 +4639,13 @@ function updateCloudBadge(isConnected) {
   const btn = document.getElementById('btn-cloud-sync');
   if (!btn) return;
   if (isConnected) {
-    btn.innerHTML = '☁️ Cloud DB <span style="color:#10B981;font-weight:bold">🟢 Live</span>';
+    btn.innerHTML = '☁️ Cloud DB <span style="font-size:0.72rem;padding:0.15rem 0.45rem;border-radius:10px;background:rgba(16,185,129,0.18);color:var(--green);font-weight:600">🟢 Live</span>';
     btn.title = 'Supabase Cloud DB Connected & Syncing Live across Mobile & PC';
-    btn.style.borderColor = '#10B981';
+    btn.style.borderColor = 'var(--green)';
   } else {
-    btn.innerHTML = '☁️ Cloud DB <span style="color:#FF3B30;font-weight:bold">🔴 Setup</span>';
-    btn.title = 'Click to connect Supabase Cloud DB for Cross-Device Syncing';
-    btn.style.borderColor = '#FF3B30';
+    btn.innerHTML = '☁️ Cloud DB <span style="font-size:0.72rem;padding:0.15rem 0.45rem;border-radius:10px;background:rgba(245,158,11,0.18);color:var(--gold);font-weight:600">☁️ Local</span>';
+    btn.title = 'Running in Browser Storage mode. Click to connect Supabase Cloud DB for live multi-device sync.';
+    btn.style.borderColor = 'var(--gold)';
   }
 }
 
@@ -4925,6 +4925,23 @@ async function saveToLocal() {
       await Promise.all(promises);
       console.log('☁️ Synced all 12 tables to Supabase Cloud DB ✓');
     }
+
+    // 4. Always update Web Browser LocalStorage as immediate fallback (for Vercel & Web refreshes)
+    try {
+      localStorage.setItem('dogar_web_inventory', JSON.stringify(inventory || []));
+      localStorage.setItem('dogar_web_employees', JSON.stringify(employees || []));
+      localStorage.setItem('dogar_web_petty_cash', JSON.stringify(pettyCash || []));
+      localStorage.setItem('dogar_web_sales_ledger', JSON.stringify(salesLedger || []));
+      localStorage.setItem('dogar_web_expense_ledger', JSON.stringify(expenseLedger || []));
+      localStorage.setItem('dogar_web_menu_items', JSON.stringify(menuItems || []));
+      localStorage.setItem('dogar_web_menu_cats', JSON.stringify(menuCategories || []));
+      localStorage.setItem('dogar_web_deals', JSON.stringify(deals || []));
+      localStorage.setItem('dogar_web_tables', JSON.stringify(tables || []));
+      localStorage.setItem('dogar_web_orders', JSON.stringify(orders || []));
+      localStorage.setItem('dogar_web_unpaid_bills', JSON.stringify(unpaidBills || {}));
+      localStorage.setItem('dogar_web_app_users', JSON.stringify(appUsers || []));
+      localStorage.setItem('dogar_web_next_petty_id', String(nextPettyId || 1));
+    } catch(e) { console.warn('LocalStorage web fallback save:', e); }
   } catch(e) { console.warn('Database save warning:', e); }
 }
 
@@ -5205,6 +5222,45 @@ async function loadFromLocal() {
 
         console.log('✅ Loaded data from Central Backend Database ✓');
         loadedFromCentral = true;
+      }
+    }
+
+    // 2.5 Web Browser LocalStorage Fallback (for Vercel & static web hosting)
+    if (!loadedFromCentral) {
+      try {
+        const localOrd = localStorage.getItem('dogar_web_orders');
+        const localTb  = localStorage.getItem('dogar_web_tables');
+        const localUb  = localStorage.getItem('dogar_web_unpaid_bills');
+        const localMi  = localStorage.getItem('dogar_web_menu_items');
+        const localMc  = localStorage.getItem('dogar_web_menu_cats');
+        const localDl  = localStorage.getItem('dogar_web_deals');
+        const localInv = localStorage.getItem('dogar_web_inventory');
+        const localEmp = localStorage.getItem('dogar_web_employees');
+        const localPc  = localStorage.getItem('dogar_web_petty_cash');
+        const localSl  = localStorage.getItem('dogar_web_sales_ledger');
+        const localEl  = localStorage.getItem('dogar_web_expense_ledger');
+        const localUsr = localStorage.getItem('dogar_web_app_users');
+        const localPid = localStorage.getItem('dogar_web_next_petty_id');
+
+        if (localOrd) orders         = JSON.parse(localOrd);
+        if (localTb)  tables         = JSON.parse(localTb);
+        if (localUb)  unpaidBills    = JSON.parse(localUb);
+        if (localMi)  menuItems      = JSON.parse(localMi);
+        if (localMc)  menuCategories = JSON.parse(localMc);
+        if (localDl)  deals          = JSON.parse(localDl);
+        if (localInv) inventory      = JSON.parse(localInv);
+        if (localEmp) employees      = JSON.parse(localEmp);
+        if (localPc)  pettyCash      = JSON.parse(localPc);
+        if (localSl)  salesLedger    = JSON.parse(localSl);
+        if (localEl)  expenseLedger  = JSON.parse(localEl);
+        if (localUsr) appUsers       = JSON.parse(localUsr);
+        if (localPid) nextPettyId    = parseInt(localPid) || 1;
+
+        if (localOrd || localTb || localMi) {
+          console.log('✅ Loaded web data from browser localStorage ✓');
+        }
+      } catch (err) {
+        console.warn('LocalStorage web fallback load error:', err);
       }
     }
 
