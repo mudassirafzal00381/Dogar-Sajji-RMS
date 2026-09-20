@@ -26,31 +26,36 @@ function migrateUserDataFolderIfNeeded() {
 }
 
 let splashWin = null;
+let mainWin = null;
 
 function createSplashWindow() {
-  splashWin = new BrowserWindow({
-    width: 480,
-    height: 320,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    resizable: false,
-    center: true,
-    icon: path.join(__dirname, 'logo.png'),
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  });
+  try {
+    splashWin = new BrowserWindow({
+      width: 480,
+      height: 320,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      resizable: false,
+      center: true,
+      icon: path.join(__dirname, 'logo.png'),
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    });
 
-  splashWin.loadFile(path.join(__dirname, 'renderer', 'splash.html'));
+    splashWin.loadFile(path.join(__dirname, 'renderer', 'splash.html')).catch(() => {});
+  } catch(e) {
+    console.warn('Splash window create warning:', e);
+  }
 }
 
 function createWindow() {
-  const win = new BrowserWindow({
+  mainWin = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: "Dogar Sajji RMS",
+    title: "Restaurant Management System",
     icon: path.join(__dirname, 'logo.png'),
     show: false,
     webPreferences: {
@@ -60,31 +65,42 @@ function createWindow() {
     },
   });
 
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-
-  win.once('ready-to-show', () => {
-    // Brief delay to allow splash loading animation to finish cleanly
-    setTimeout(() => {
-      win.show();
-      win.focus();
-      if (splashWin && !splashWin.isDestroyed()) {
-        splashWin.close();
-        splashWin = null;
-      }
-    }, 600);
+  mainWin.loadFile(path.join(__dirname, 'renderer', 'index.html')).catch(err => {
+    console.error('Failed to load renderer index.html:', err);
   });
+
+  const forceShowWindow = () => {
+    if (mainWin && !mainWin.isDestroyed()) {
+      if (!mainWin.isVisible()) {
+        mainWin.show();
+        mainWin.focus();
+      }
+    }
+    if (splashWin && !splashWin.isDestroyed()) {
+      splashWin.close();
+      splashWin = null;
+    }
+  };
+
+  mainWin.once('ready-to-show', () => {
+    setTimeout(forceShowWindow, 400);
+  });
+
+  // HARD FALLBACK: Ensure main window is shown after 1.2 seconds even if ready-to-show didn't fire
+  setTimeout(forceShowWindow, 1200);
 }
 
 app.whenReady().then(() => {
-  app.setName("Dogar Sajji");
-  if (process.platform === 'win32') {
-    app.setAppUserModelId('com.dogarsajji.rms');
-  }
+  try {
+    if (process.platform === 'win32') {
+      app.setAppUserModelId('com.restaurant.rms');
+    }
+  } catch(e){}
 
-  migrateUserDataFolderIfNeeded();
-  database.initDatabase();
-  startServer().catch(err => console.warn('Backend server start error:', err));
-  registerIpcHandlers(database);
+  try { migrateUserDataFolderIfNeeded(); } catch(e){ console.warn('UserData migrate:', e); }
+  try { database.initDatabase(); } catch(e){ console.warn('DB init warning:', e); }
+  try { startServer().catch(err => console.warn('Backend server start error:', err)); } catch(e){}
+  try { registerIpcHandlers(database); } catch(e){ console.warn('IPC register warning:', e); }
 
   createSplashWindow();
   createWindow();
@@ -97,4 +113,3 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
-

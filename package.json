@@ -6,7 +6,7 @@
   "main": "main.js",
   "private": true,
   "scripts": {
-    "start": "electron .",
+    "start": "npx electron .",
     "server": "node server.js",
     "dist": "electron-builder --win"
   },
