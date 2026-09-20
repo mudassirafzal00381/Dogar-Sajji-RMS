@@ -1,8 +1,8 @@
 {
-  "name": "edens-crust-pizza-rms",
-  "productName": "Eden's Crust Pizza",
+  "name": "dogar-sajji-rms",
+  "productName": "Dogar Sajji",
   "version": "1.0.0",
-  "description": "Eden's Crust Pizza Restaurant Management System",
+  "description": "Dogar Sajji Restaurant Management System",
   "main": "main.js",
   "private": true,
   "scripts": {
@@ -18,8 +18,8 @@
     "better-sqlite3": "^12.11.1"
   },
   "build": {
-    "appId": "com.edenscrust.pizza.rms",
-    "productName": "Eden's Crust Pizza",
+    "appId": "com.dogarsajji.rms",
+    "productName": "Dogar Sajji",
     "npmRebuild": false,
     "directories": {
       "output": "dist",

@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// ⚡ EDEN'S CRUST PIZZA — CENTRAL BACKEND HTTP API SERVER
+// ⚡ Dogar Sajji — CENTRAL BACKEND HTTP API SERVER
 // ══════════════════════════════════════════════════════════════════════════════
 // Provides a unified REST API and static file web server running on port 4850.
 // Allows all browser profiles (Chrome/Edge Profile A & B), mobile devices,
@@ -113,7 +113,7 @@ async function handleApiRequest(req, res, urlPath) {
     // ── Health Check ──
     if (urlPath === '/api/status' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok', app: "Eden's Crust Pizza", empty: database.isDbEmpty() }));
+      res.end(JSON.stringify({ status: 'ok', app: "Dogar Sajji", empty: database.isDbEmpty() }));
       return;
     }
 

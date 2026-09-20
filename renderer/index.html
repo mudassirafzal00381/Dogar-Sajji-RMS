@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Eden's Crust Pizza RMS</title>
+<title>Dogar Sajji RMS</title>
 <link rel="icon" href="../logo.png" type="image/png">
 <link rel="shortcut icon" href="../logo.png" type="image/png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -297,8 +297,8 @@ tr:hover td{background:rgba(201,168,76,.04)}
 <!-- LOGIN -->
 <div id="login-screen">
   <div class="logo">
-    <img src="../logo.png" style="width:180px;height:180px;object-fit:contain;margin-bottom:12px" alt="Eden's Crust Logo">
-    <h1>Eden's Crust</h1>
+    <img src="../logo.png" style="width:180px;height:180px;object-fit:contain;margin-bottom:12px" alt="Dogar Sajji Logo">
+    <h1>Dogar Sajji</h1>
     <p>Restaurant Management System</p>
   </div>
   <div class="login-card">
@@ -321,8 +321,8 @@ tr:hover td{background:rgba(201,168,76,.04)}
   <div class="topbar">
     <div class="topbar-left">
       <div style="display:flex;align-items:center;gap:.7rem">
-        <img src="../logo.png" style="height:56px;width:56px;object-fit:contain" alt="Eden's Crust Logo">
-        <span class="brand">Eden's Crust Pizza</span>
+        <img src="../logo.png" style="height:56px;width:56px;object-fit:contain" alt="Dogar Sajji Logo">
+        <span class="brand">Dogar Sajji</span>
       </div>
       <span style="font-size:.78rem;color:var(--text2)"><span class="status-dot"></span>System Active</span>
     </div>
@@ -434,10 +434,10 @@ function updateServerStatus(connected) {
 let currentRole = 'Admin';
 let currentUser = 'Admin';
 
-// ── ADMIN CREDENTIALS ──
-const ADMIN_CREDENTIALS = { username: 'admin', password: '1234' };
+// ── ADMIN CRDogarTIALS ──
+const ADMIN_CRDogarTIALS = { username: 'admin', password: '1234' };
 
-const ROLE_CREDENTIALS = {};
+const ROLE_CRDogarTIALS = {};
 const SALES_RESTRICTED_ROLES = [];
 
 const ROLES = {
@@ -458,10 +458,10 @@ const TABS = {
 let orders = [];
 let tables = [];
 let menuCategories = [
-  'Eden Special Pizzas',
-  'Eden Loaded Pizza',
+  'Dogar Special Pizzas',
+  'Dogar Loaded Pizza',
   'Crust Pizza',
-  "Eden's Traditional Stuff Pizza",
+  "Dogar's Traditional Stuff Pizza",
   'Burgers',
   'Wraps',
   'Wings',
@@ -473,36 +473,36 @@ let menuCategories = [
 ];
 
 let menuItems = [
-  // ── EDEN SPECIAL PIZZAS ──
-  { id: 1, name: "Eden's Special Pizza", cat: 'Eden Special Pizzas', price: 650, discount: 0, desc: 'Special sauce, loaded chicken, veggies & extra mozzarella cheese', img: '🍕', available: true, variants: [{label:'Small',price:650},{label:'Medium',price:1200},{label:'Large',price:1500},{label:'Family',price:2400}] },
-  { id: 2, name: 'Pepperoni Special Pizza', cat: 'Eden Special Pizzas', price: 1200, discount: 0, desc: 'Italian red sauce, extra mozzarella cheese & premium pepperoni slices', img: '🍕', available: true, variants: [{label:'Medium',price:1200},{label:'Large',price:1500},{label:'Family',price:2400}] },
-  { id: 3, name: 'Deep Dish Special Pizza', cat: 'Eden Special Pizzas', price: 1800, discount: 0, desc: 'Deep dish style layered with cheese, chicken tikka & special herbs', img: '🍕', available: true, variants: [{label:'Medium',price:1800},{label:'Large',price:2400}] },
-  { id: 4, name: 'Prestigious Special Pizza', cat: 'Eden Special Pizzas', price: 700, discount: 0, desc: 'Chef signature sauce, smoked chicken, mushrooms, olives & sausages', img: '🍕', available: true, variants: [{label:'Small',price:700},{label:'Medium',price:1400},{label:'Large',price:2000},{label:'Family',price:2350}] },
+  // ── Dogar SPECIAL PIZZAS ──
+  { id: 1, name: "Dogar's Special Pizza", cat: 'Dogar Special Pizzas', price: 650, discount: 0, desc: 'Special sauce, loaded chicken, veggies & extra mozzarella cheese', img: '🍕', available: true, variants: [{label:'Small',price:650},{label:'Medium',price:1200},{label:'Large',price:1500},{label:'Family',price:2400}] },
+  { id: 2, name: 'Pepperoni Special Pizza', cat: 'Dogar Special Pizzas', price: 1200, discount: 0, desc: 'Italian red sauce, extra mozzarella cheese & premium pepperoni slices', img: '🍕', available: true, variants: [{label:'Medium',price:1200},{label:'Large',price:1500},{label:'Family',price:2400}] },
+  { id: 3, name: 'Deep Dish Special Pizza', cat: 'Dogar Special Pizzas', price: 1800, discount: 0, desc: 'Deep dish style layered with cheese, chicken tikka & special herbs', img: '🍕', available: true, variants: [{label:'Medium',price:1800},{label:'Large',price:2400}] },
+  { id: 4, name: 'Prestigious Special Pizza', cat: 'Dogar Special Pizzas', price: 700, discount: 0, desc: 'Chef signature sauce, smoked chicken, mushrooms, olives & sausages', img: '🍕', available: true, variants: [{label:'Small',price:700},{label:'Medium',price:1400},{label:'Large',price:2000},{label:'Family',price:2350}] },
 
-  // ── EDEN LOADED PIZZA ──
-  { id: 5, name: 'Peri-Peri Pizza', cat: 'Eden Loaded Pizza', price: 700, discount: 0, desc: 'Loaded, filled crust edge with spicy Peri-Peri chicken & jalapenos', img: '🍕', available: true, variants: [{label:'Small',price:700},{label:'Medium',price:1250},{label:'Large',price:1750},{label:'Family',price:2350}] },
-  { id: 6, name: 'Chicken BBQ Pizza', cat: 'Eden Loaded Pizza', price: 600, discount: 0, desc: 'Smokey BBQ sauce, grilled chicken, onions & mozzarella cheese', img: '🍕', available: true, variants: [{label:'Small',price:600},{label:'Medium',price:1150},{label:'Large',price:1400},{label:'Family',price:2200}] },
-  { id: 7, name: 'Chicken Fajita Pizza', cat: 'Eden Loaded Pizza', price: 500, discount: 0, desc: 'Fajita seasoned chicken, capsicum, onions & rich cheese', img: '🍕', available: true, variants: [{label:'Small',price:500},{label:'Medium',price:1050},{label:'Large',price:1350},{label:'Family',price:2000}] },
-  { id: 8, name: 'Chicken Tikka Pizza', cat: 'Eden Loaded Pizza', price: 500, discount: 0, desc: 'Traditional tikka chicken, onions & mozzarella cheese', img: '🍕', available: true, variants: [{label:'Small',price:500},{label:'Medium',price:1050},{label:'Large',price:1350},{label:'Family',price:2000}] },
-  { id: 9, name: 'Chicken Supreme Pizza', cat: 'Eden Loaded Pizza', price: 600, discount: 0, desc: 'Supreme mix of tikka & fajita chicken, olives, mushrooms & cheese', img: '🍕', available: true, variants: [{label:'Small',price:600},{label:'Medium',price:1150},{label:'Large',price:1400},{label:'Family',price:2200}] },
-  { id: 10, name: 'Mughlai Pizza', cat: 'Eden Loaded Pizza', price: 600, discount: 0, desc: 'Rich Mughlai style chicken with aromatic spices & extra cheese', img: '🍕', available: true, variants: [{label:'Small',price:600},{label:'Medium',price:1150},{label:'Large',price:1400},{label:'Family',price:2200}] },
+  // ── Dogar LOADED PIZZA ──
+  { id: 5, name: 'Peri-Peri Pizza', cat: 'Dogar Loaded Pizza', price: 700, discount: 0, desc: 'Loaded, filled crust edge with spicy Peri-Peri chicken & jalapenos', img: '🍕', available: true, variants: [{label:'Small',price:700},{label:'Medium',price:1250},{label:'Large',price:1750},{label:'Family',price:2350}] },
+  { id: 6, name: 'Chicken BBQ Pizza', cat: 'Dogar Loaded Pizza', price: 600, discount: 0, desc: 'Smokey BBQ sauce, grilled chicken, onions & mozzarella cheese', img: '🍕', available: true, variants: [{label:'Small',price:600},{label:'Medium',price:1150},{label:'Large',price:1400},{label:'Family',price:2200}] },
+  { id: 7, name: 'Chicken Fajita Pizza', cat: 'Dogar Loaded Pizza', price: 500, discount: 0, desc: 'Fajita seasoned chicken, capsicum, onions & rich cheese', img: '🍕', available: true, variants: [{label:'Small',price:500},{label:'Medium',price:1050},{label:'Large',price:1350},{label:'Family',price:2000}] },
+  { id: 8, name: 'Chicken Tikka Pizza', cat: 'Dogar Loaded Pizza', price: 500, discount: 0, desc: 'Traditional tikka chicken, onions & mozzarella cheese', img: '🍕', available: true, variants: [{label:'Small',price:500},{label:'Medium',price:1050},{label:'Large',price:1350},{label:'Family',price:2000}] },
+  { id: 9, name: 'Chicken Supreme Pizza', cat: 'Dogar Loaded Pizza', price: 600, discount: 0, desc: 'Supreme mix of tikka & fajita chicken, olives, mushrooms & cheese', img: '🍕', available: true, variants: [{label:'Small',price:600},{label:'Medium',price:1150},{label:'Large',price:1400},{label:'Family',price:2200}] },
+  { id: 10, name: 'Mughlai Pizza', cat: 'Dogar Loaded Pizza', price: 600, discount: 0, desc: 'Rich Mughlai style chicken with aromatic spices & extra cheese', img: '🍕', available: true, variants: [{label:'Small',price:600},{label:'Medium',price:1150},{label:'Large',price:1400},{label:'Family',price:2200}] },
 
   // ── CRUST PIZZA ──
   { id: 11, name: 'Crown Crust Pizza', cat: 'Crust Pizza', price: 650, discount: 0, desc: 'Golden crown stuffed crust pockets filled with chicken & cheese', img: '🍕', available: true, variants: [{label:'Small',price:650},{label:'Medium',price:1200},{label:'Large',price:1500},{label:'Family',price:2400}] },
   { id: 12, name: 'Kebab Crust Pizza', cat: 'Crust Pizza', price: 650, discount: 0, desc: 'Crust ring stuffed with juicy seekh kebab slices & mozzarella', img: '🍕', available: true, variants: [{label:'Small',price:650},{label:'Medium',price:1150},{label:'Large',price:1450},{label:'Family',price:2350}] },
   { id: 13, name: 'Royal Kabab Crust Pizza', cat: 'Crust Pizza', price: 1400, discount: 0, desc: 'Royal style stuffed kebab crust topped with special sauces', img: '🍕', available: true, variants: [{label:'Medium',price:1400},{label:'Large',price:1850},{label:'Family',price:2550}] },
 
-  // ── EDEN'S TRADITIONAL STUFF PIZZA ──
-  { id: 14, name: 'Chicken Tandoori Pizza', cat: "Eden's Traditional Stuff Pizza", price: 500, discount: 0, desc: 'Tandoori marinated chicken boti, onions & mozzarella', img: '🍕', available: true, variants: [{label:'Small',price:500},{label:'Medium',price:1050},{label:'Large',price:1350},{label:'Family',price:2000}] },
-  { id: 15, name: 'Bihari Kebab Pizza', cat: "Eden's Traditional Stuff Pizza", price: 600, discount: 0, desc: 'Spicy Bihari kebab chunks, onions & mozzarella cheese', img: '🍕', available: true, variants: [{label:'Small',price:600},{label:'Medium',price:1250},{label:'Large',price:1600},{label:'Family',price:2350}] },
-  { id: 16, name: 'Malai Pizza', cat: "Eden's Traditional Stuff Pizza", price: 650, discount: 0, desc: 'Creamy malai boti chicken, capsicum & cheese melt', img: '🍕', available: true, variants: [{label:'Small',price:650},{label:'Medium',price:1250},{label:'Large',price:1600},{label:'Family',price:2350}] },
-  { id: 17, name: 'Veg Lover Pizza', cat: "Eden's Traditional Stuff Pizza", price: 500, discount: 0, desc: 'Fresh capsicum, onions, mushrooms, olives & sweet corn', img: '🍕', available: true, variants: [{label:'Small',price:500},{label:'Medium',price:1050},{label:'Large',price:1350},{label:'Family',price:2000}] },
-  { id: 18, name: 'Bonfire Pizza', cat: "Eden's Traditional Stuff Pizza", price: 600, discount: 0, desc: 'Hot bonfire sauce, fajita chicken, jalapenos & tomatoes', img: '🍕', available: true, variants: [{label:'Small',price:600},{label:'Medium',price:1150},{label:'Large',price:1450},{label:'Family',price:2150}] },
-  { id: 19, name: 'Chicken Achari Pizza', cat: "Eden's Traditional Stuff Pizza", price: 500, discount: 0, desc: 'Pickled achari chicken flavor with capsicum & olives', img: '🍕', available: true, variants: [{label:'Small',price:500},{label:'Medium',price:1050},{label:'Large',price:1350},{label:'Family',price:2000}] },
+  // ── Dogar's TRADITIONAL STUFF PIZZA ──
+  { id: 14, name: 'Chicken Tandoori Pizza', cat: "Dogar's Traditional Stuff Pizza", price: 500, discount: 0, desc: 'Tandoori marinated chicken boti, onions & mozzarella', img: '🍕', available: true, variants: [{label:'Small',price:500},{label:'Medium',price:1050},{label:'Large',price:1350},{label:'Family',price:2000}] },
+  { id: 15, name: 'Bihari Kebab Pizza', cat: "Dogar's Traditional Stuff Pizza", price: 600, discount: 0, desc: 'Spicy Bihari kebab chunks, onions & mozzarella cheese', img: '🍕', available: true, variants: [{label:'Small',price:600},{label:'Medium',price:1250},{label:'Large',price:1600},{label:'Family',price:2350}] },
+  { id: 16, name: 'Malai Pizza', cat: "Dogar's Traditional Stuff Pizza", price: 650, discount: 0, desc: 'Creamy malai boti chicken, capsicum & cheese melt', img: '🍕', available: true, variants: [{label:'Small',price:650},{label:'Medium',price:1250},{label:'Large',price:1600},{label:'Family',price:2350}] },
+  { id: 17, name: 'Veg Lover Pizza', cat: "Dogar's Traditional Stuff Pizza", price: 500, discount: 0, desc: 'Fresh capsicum, onions, mushrooms, olives & sweet corn', img: '🍕', available: true, variants: [{label:'Small',price:500},{label:'Medium',price:1050},{label:'Large',price:1350},{label:'Family',price:2000}] },
+  { id: 18, name: 'Bonfire Pizza', cat: "Dogar's Traditional Stuff Pizza", price: 600, discount: 0, desc: 'Hot bonfire sauce, fajita chicken, jalapenos & tomatoes', img: '🍕', available: true, variants: [{label:'Small',price:600},{label:'Medium',price:1150},{label:'Large',price:1450},{label:'Family',price:2150}] },
+  { id: 19, name: 'Chicken Achari Pizza', cat: "Dogar's Traditional Stuff Pizza", price: 500, discount: 0, desc: 'Pickled achari chicken flavor with capsicum & olives', img: '🍕', available: true, variants: [{label:'Small',price:500},{label:'Medium',price:1050},{label:'Large',price:1350},{label:'Family',price:2000}] },
 
   // ── BURGERS ──
   { id: 20, name: 'Zinger Burger', cat: 'Burgers', price: 350, discount: 0, desc: 'Crispy zinger fillet with secret sauce & fresh lettuce', img: '🍔', available: true, variants: [] },
-  { id: 21, name: 'Special Burger', cat: 'Burgers', price: 400, discount: 0, desc: 'Eden special loaded chicken patty burger', img: '🍔', available: true, variants: [] },
+  { id: 21, name: 'Special Burger', cat: 'Burgers', price: 400, discount: 0, desc: 'Dogar special loaded chicken patty burger', img: '🍔', available: true, variants: [] },
   { id: 22, name: 'Chicken Patty Burger', cat: 'Burgers', price: 300, discount: 0, desc: 'Juicy chicken patty with creamy mayo sauce', img: '🍔', available: true, variants: [] },
   { id: 23, name: 'Double Burger', cat: 'Burgers', price: 600, discount: 0, desc: 'Double patty & double cheese melt burger', img: '🍔', available: true, variants: [] },
   { id: 24, name: 'BBQ Grilled Patty Burger', cat: 'Burgers', price: 500, discount: 0, desc: 'Smokey grilled patty with BBQ sauce', img: '🍔', available: true, variants: [] },
@@ -513,7 +513,7 @@ let menuItems = [
 
   // ── WRAPS ──
   { id: 29, name: 'Turkish Wrap', cat: 'Wraps', price: 450, discount: 0, desc: 'Turkish spiced chicken wrap with fresh salad', img: '🌯', available: true, variants: [] },
-  { id: 30, name: 'Eden Special Wrap', cat: 'Wraps', price: 650, discount: 0, desc: 'Eden special loaded wrap with sauce', img: '🌯', available: true, variants: [] },
+  { id: 30, name: 'Dogar Special Wrap', cat: 'Wraps', price: 650, discount: 0, desc: 'Dogar special loaded wrap with sauce', img: '🌯', available: true, variants: [] },
   { id: 31, name: 'Arabic Wrap', cat: 'Wraps', price: 550, discount: 0, desc: 'Arabic style chicken wrap with garlic mayo', img: '🌯', available: true, variants: [] },
   { id: 32, name: 'Zinger Wrap', cat: 'Wraps', price: 400, discount: 0, desc: 'Crispy zinger strips wrapped in paratha/tortilla', img: '🌯', available: true, variants: [] },
   { id: 33, name: 'Fillet Wrap', cat: 'Wraps', price: 600, discount: 0, desc: 'Grilled fillet strips wrap with special sauce', img: '🌯', available: true, variants: [] },
@@ -534,7 +534,7 @@ let menuItems = [
 
   // ── PASTA ──
   { id: 44, name: 'Creamy Pasta', cat: 'Pasta', price: 400, discount: 0, desc: 'Rich creamy white alfredo sauce pasta', img: '🍝', available: true, variants: [{label:'Half',price:400},{label:'Full',price:800}] },
-  { id: 45, name: 'Special Pasta', cat: 'Pasta', price: 500, discount: 0, desc: 'Eden special loaded cheese pasta', img: '🍝', available: true, variants: [{label:'Half',price:500},{label:'Full',price:1000}] },
+  { id: 45, name: 'Special Pasta', cat: 'Pasta', price: 500, discount: 0, desc: 'Dogar special loaded cheese pasta', img: '🍝', available: true, variants: [{label:'Half',price:500},{label:'Full',price:1000}] },
   { id: 46, name: 'Flaming Pasta', cat: 'Pasta', price: 400, discount: 0, desc: 'Spicy red flaming sauce pasta', img: '🍝', available: true, variants: [{label:'Half',price:400},{label:'Full',price:800}] },
   { id: 47, name: 'Crunchy Pasta', cat: 'Pasta', price: 400, discount: 0, desc: 'Pasta topped with crispy chicken crunch', img: '🍝', available: true, variants: [{label:'Half',price:400},{label:'Full',price:800}] },
 
@@ -561,14 +561,14 @@ let menuItems = [
 
 let deals = [
   { id: 1, name: 'Deal 1', category: 'Midnight Deals', price: 1420, available: true, items: ['1 Large Pizza (Fajita + Tikka only)', '1L Drink'] },
-  { id: 2, name: 'Deal 2', category: 'Midnight Deals', price: 1250, available: true, items: ["1 Medium Eden's Special Pizza", '1x 350ml Drink'] },
+  { id: 2, name: 'Deal 2', category: 'Midnight Deals', price: 1250, available: true, items: ["1 Medium Dogar's Special Pizza", '1x 350ml Drink'] },
   { id: 3, name: 'Deal 3', category: 'Midnight Deals', price: 2700, available: true, items: ['2 Large Pizzas (Fajita + Tikka)', '1.5L Drink'] },
   { id: 4, name: 'Deal 4', category: 'Midnight Deals', price: 1120, available: true, items: ['2 Small Pizzas (Fajita + Tikka)', '2x 350ml Drink'] },
   { id: 5, name: 'Deal 5', category: 'Midnight Deals', price: 2120, available: true, items: ['2 Medium Pizzas (Fajita + Tikka)', '1L Drink'] },
   { id: 6, name: 'Deal 6', category: 'Midnight Deals', price: 4000, available: true, items: ['3 Large Pizzas (Fajita + Tikka)', '1.5L Drink'] },
   { id: 7, name: 'Deal 7', category: 'Midnight Deals', price: 2400, available: true, items: ['1 Large Pizza', '1 Zinger Burger', '1.5L Drink', '1 Large Fries'] },
   { id: 8, name: 'Deal 8', category: 'Midnight Deals', price: 2100, available: true, items: ['1 Large Pizza', '1 Zinger Burger', '5 Wings', '1.5L Drink'] },
-  { id: 9, name: "Eden's Special Deal", category: 'Midnight Deals', price: 1650, available: true, items: ['1 Large Pizza (all 5 loaded flavors)', '1.5L Drink'] },
+  { id: 9, name: "Dogar's Special Deal", category: 'Midnight Deals', price: 1650, available: true, items: ['1 Large Pizza (all 5 loaded flavors)', '1.5L Drink'] },
   { id: 10, name: 'Deal 10 — Birthday Deal', category: 'Midnight Deals', price: 6450, available: true, items: ['2 Large Pizzas', '10 Wings', '6 Zinger Burgers', 'Family Fries', '1.5L Drink', '1 Cake'] },
   { id: 11, name: 'Deal 11', category: 'Midnight Deals', price: 570, available: true, items: ['1 Zinger Burger', 'Regular Fries', '1x 350ml Drink'] },
   { id: 12, name: 'Deal 12', category: 'Midnight Deals', price: 950, available: true, items: ['2 Zinger Burgers', 'Regular Fries', '2x 350ml Drink'] },
@@ -631,10 +631,10 @@ async function loadAppUsers(){
   } catch(e) {
     console.warn('App users load error:', e);
   }
-  // Sync admin credentials and login screen with loaded database password
+  // Sync admin crDogartials and login screen with loaded database password
   const adminUser = appUsers.find(u => u.username.toLowerCase() === 'admin');
   if (adminUser) {
-    ADMIN_CREDENTIALS.password = adminUser.password;
+    ADMIN_CRDogarTIALS.password = adminUser.password;
     const pwdInput = document.getElementById('password');
     if (pwdInput && !pwdInput.value) {
       pwdInput.value = adminUser.password;
@@ -653,7 +653,7 @@ async function saveAppUsersLocal(){
   }
   const adminUser = appUsers.find(u => u.username.toLowerCase() === 'admin');
   if (adminUser) {
-    ADMIN_CREDENTIALS.password = adminUser.password;
+    ADMIN_CRDogarTIALS.password = adminUser.password;
     const pwdInput = document.getElementById('password');
     if (pwdInput) pwdInput.value = adminUser.password;
   }
@@ -684,8 +684,8 @@ async function doLogin(){
 
     currentUser = user.username;
     currentRole = user.role || 'Admin';
-    ADMIN_CREDENTIALS.username = user.username;
-    ADMIN_CREDENTIALS.password = user.password;
+    ADMIN_CRDogarTIALS.username = user.username;
+    ADMIN_CRDogarTIALS.password = user.password;
 
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
@@ -2044,7 +2044,7 @@ function printKitchenTicket(id){
   </head><body>
 
   <!-- LOGO HEADER -->
-  <div class="center bold" style="font-size:11px;letter-spacing:3px;border-bottom:2px solid #000;padding-bottom:4px;margin-bottom:4px">EDEN'S CRUST PIZZA</div>
+  <div class="center bold" style="font-size:11px;letter-spacing:3px;border-bottom:2px solid #000;padding-bottom:4px;margin-bottom:4px">Dogar Sajji</div>
   <div class="center bold" style="font-size:11px;margin-bottom:2px">*** KITCHEN TICKET ***</div>
   <div class="center" style="font-size:10px;color:#333">${now}</div>
 
@@ -2323,7 +2323,7 @@ function renderBilling(){
     <div>
       <div class="bill-preview" id="bill-display">
         <div class="bill-header">
-          <div class="bill-logo">🍕 Eden's Crust Pizza</div>
+          <div class="bill-logo">🍕 Dogar Sajji</div>
           <div style="font-size:.78rem;color:var(--text2);margin-top:.25rem">Taste the Best Crust in Town</div>
           <div style="font-size:.72rem;color:var(--text3);margin-top:.1rem">📞 0303-5558000 · 0314-4421315</div>
           <div style="font-size:.68rem;color:var(--text3);margin-top:.1rem">Food Street Near Britian Intl School, Garden Road Muzaffargarh</div>
@@ -2388,8 +2388,8 @@ function generateMergedBill(billKey,type,quiet=false){
   if(billDisplay){
     billDisplay.innerHTML=`
     <div class="bill-header">
-      <img src="${appLogoUrl}" style="height:90px;width:auto;object-fit:contain;margin-bottom:.4rem;filter:drop-shadow(0 4px 10px rgba(255,200,0,0.3))" alt="Eden's Crust Logo">
-      <div class="bill-logo">EDEN'S CRUST PIZZA</div>
+      <img src="${appLogoUrl}" style="height:90px;width:auto;object-fit:contain;margin-bottom:.4rem;filter:drop-shadow(0 4px 10px rgba(255,200,0,0.3))" alt="Dogar Sajji Logo">
+      <div class="bill-logo">Dogar Sajji</div>
       <div style="font-size:.78rem;color:var(--text2);margin-top:.25rem">Taste the Best Crust in Town</div>
       <div style="font-size:.7rem;color:var(--text3);margin-top:.1rem">📞 0303-5558000 · 0314-4421315</div>
       <div style="font-size:.66rem;color:var(--text3);margin-top:.1rem">Food Street Near Britian International School, Garden Road Muzaffargarh</div>
@@ -2555,8 +2555,8 @@ function printBill(){
   </head><body>
 
   <div class="logo-box">
-    <img src="${appLogoUrl}" style="max-height:92px;width:auto;margin:0 auto 6px auto;display:block;box-shadow:none" alt="Eden's Crust Logo">
-    <div class="logo-main">EDEN'S CRUST PIZZA</div>
+    <img src="${appLogoUrl}" style="max-height:92px;width:auto;margin:0 auto 6px auto;display:block;box-shadow:none" alt="Dogar Sajji Logo">
+    <div class="logo-main">Dogar Sajji</div>
     <div class="logo-sub">Taste the Best Crust in Town</div>
     <div class="logo-tag">SALES RECEIPT</div>
     <div class="logo-info">&#128222; 0303-5558000 / 0314-4421315</div>
@@ -2633,7 +2633,7 @@ function printBill(){
   <div class="footer">
     <div style="font-size:12px;font-weight:900;margin-bottom:2px">Thank you for dining with us!</div>
     <div style="font-size:11px;font-weight:bold;margin-bottom:4px">Please visit again &#x1F64F;</div>
-    <div style="font-size:9px;font-weight:bold;letter-spacing:1px">* * * EDEN'S CRUST PIZZA * * *</div>
+    <div style="font-size:9px;font-weight:bold;letter-spacing:1px">* * * Dogar Sajji * * *</div>
     <div class="disclaimer">This is a computer generated receipt.</div>
   </div>
   </body></html>`;
@@ -2804,7 +2804,7 @@ function savePrinterSettings() {
 async function testReceiptPrint() {
   const sel = document.getElementById('ps-printer-select')?.value || localStorage.getItem('hfc_printer_device') || '';
   const silent = document.getElementById('ps-silent-toggle')?.checked || false;
-  const testHtml = `<!DOCTYPE html><html><head><style>@page { size: 80mm portrait; margin: 0; } body{font-family:monospace;padding:15px;text-align:center}</style></head><body><h2>EDEN'S CRUST PIZZA</h2><p>*** TEST PRINT SUCCESSFUL ***</p><p>${new Date().toLocaleString()}</p></body></html>`;
+  const testHtml = `<!DOCTYPE html><html><head><style>@page { size: 80mm portrait; margin: 0; } body{font-family:monospace;padding:15px;text-align:center}</style></head><body><h2>Dogar Sajji</h2><p>*** TEST PRINT SUCCESSFUL ***</p><p>${new Date().toLocaleString()}</p></body></html>`;
 
   if (window.api && window.api.printReceipt) {
     toast('Sending test print...', 'info');
@@ -2843,7 +2843,7 @@ async function exportSalesCSV() {
     csv += `"${s.id}","${s.date}","${s.orderType || 'Dine-in'}","${tableRef}","${phone}","${addr}","${itemSummary}",${sub},${disc},${perHead},${s.total},"${s.payment || 'Cash'}","${s.waiter || ''}"\n`;
   });
 
-  const defaultName = `EdensCrust_Sales_Report_${new Date().toISOString().split('T')[0]}.csv`;
+  const defaultName = `DogarsCrust_Sales_Report_${new Date().toISOString().split('T')[0]}.csv`;
   if (window.api && window.api.saveCSV) {
     const res = await window.api.saveCSV({ defaultName, content: csv });
     if (res.canceled) return;
@@ -2866,7 +2866,7 @@ async function exportPettyCashCSV() {
     csv += `"${p.id}","${p.date}","${p.category}","${desc}",${p.amount},"${notes}"\n`;
   });
 
-  const defaultName = `EdensCrust_PettyCash_Report_${new Date().toISOString().split('T')[0]}.csv`;
+  const defaultName = `DogarsCrust_PettyCash_Report_${new Date().toISOString().split('T')[0]}.csv`;
   if (window.api && window.api.saveCSV) {
     const res = await window.api.saveCSV({ defaultName, content: csv });
     if (res.canceled) return;
@@ -4141,7 +4141,7 @@ async function saveNewPassword(){
   const confirm=document.getElementById('cp-confirm').value;
 
   const user = appUsers.find(u => u.username.toLowerCase() === (currentUser || 'admin').toLowerCase());
-  const currentPwd = user ? user.password : ADMIN_CREDENTIALS.password;
+  const currentPwd = user ? user.password : ADMIN_CRDogarTIALS.password;
 
   if(!current){toast('Enter your current password','error');return;}
   if(current!==currentPwd){toast('Current password is incorrect','error');return;}
@@ -4154,7 +4154,7 @@ async function saveNewPassword(){
   } else {
     appUsers.push({ username: currentUser || 'admin', password: nw, role: 'Admin', name: 'Master Admin' });
   }
-  ADMIN_CREDENTIALS.password = nw;
+  ADMIN_CRDogarTIALS.password = nw;
 
   await saveAppUsersLocal();
 
@@ -4260,8 +4260,8 @@ function updateCloudBadge(isConnected) {
 }
 
 function initSupabaseFromStorage() {
-  const rawUrl = localStorage.getItem('hfc_supabase_url') || window.SUPABASE_URL || '';
-  const key = localStorage.getItem('hfc_supabase_key') || window.SUPABASE_KEY || '';
+  const rawUrl = localStorage.getItem('dogar_supabase_url') || window.SUPABASE_URL || '';
+  const key = localStorage.getItem('dogar_supabase_key') || window.SUPABASE_KEY || '';
   const url = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
   if (window.supabase && url && key && url.includes('supabase.co')) {
     try {
@@ -4367,8 +4367,8 @@ async function migrateBrowserLocalStorageToApi() {
     if (localDl)  payload.deals = JSON.parse(localDl);
     if (localUb)  payload.unpaidBills = JSON.parse(localUb);
 
-    const supUrl = localStorage.getItem('hfc_supabase_url');
-    const supKey = localStorage.getItem('hfc_supabase_key');
+    const supUrl = localStorage.getItem('dogar_supabase_url');
+    const supKey = localStorage.getItem('dogar_supabase_key');
     if (supUrl || supKey) {
       payload.settings = { supabaseConfig: { url: supUrl || '', key: supKey || '' } };
     }
@@ -4384,8 +4384,8 @@ async function migrateBrowserLocalStorageToApi() {
 async function saveToLocal() {
   try {
     const currentSupConfig = {
-      url: localStorage.getItem('hfc_supabase_url') || window.SUPABASE_URL || '',
-      key: localStorage.getItem('hfc_supabase_key') || window.SUPABASE_KEY || '',
+      url: localStorage.getItem('dogar_supabase_url') || window.SUPABASE_URL || '',
+      key: localStorage.getItem('dogar_supabase_key') || window.SUPABASE_KEY || '',
     };
 
     // 1. Electron SQLite (Desktop app mode)
@@ -4577,7 +4577,7 @@ async function loadFromLocal() {
         if (Array.isArray(usr) && usr.length > 0) {
           appUsers = usr;
           const adminUser = appUsers.find(u => u.username.toLowerCase() === 'admin');
-          if (adminUser) ADMIN_CREDENTIALS.password = adminUser.password;
+          if (adminUser) ADMIN_CRDogarTIALS.password = adminUser.password;
         }
         if (settings && settings.nextPettyId != null) nextPettyId = settings.nextPettyId;
         if (settings && settings.supabaseConfig) {
@@ -4739,8 +4739,8 @@ async function loadFromLocal() {
 }
 
 function openCloudConfigModal() {
-  const currentUrl = localStorage.getItem('hfc_supabase_url') || window.SUPABASE_URL || '';
-  const currentKey = localStorage.getItem('hfc_supabase_key') || window.SUPABASE_KEY || '';
+  const currentUrl = localStorage.getItem('dogar_supabase_url') || window.SUPABASE_URL || '';
+  const currentKey = localStorage.getItem('dogar_supabase_key') || window.SUPABASE_KEY || '';
   const isConnected = !!supabaseClient;
 
   openModal(`
@@ -4785,8 +4785,8 @@ async function saveCloudConfig() {
     return;
   }
 
-  localStorage.setItem('hfc_supabase_url', url);
-  localStorage.setItem('hfc_supabase_key', key);
+  localStorage.setItem('dogar_supabase_url', url);
+  localStorage.setItem('dogar_supabase_key', key);
 
   window.SUPABASE_URL = url;
   window.SUPABASE_KEY = key;

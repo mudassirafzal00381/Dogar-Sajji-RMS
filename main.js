@@ -6,7 +6,7 @@ const { registerIpcHandlers } = require('./ipc');
 const { startServer } = require('./server');
 
 // One-time carry-over of the SQLite database from the old "Desi Bites RMS"
-// userData folder into the new "HFC Pizza" one — the rebrand changes
+// userData folder into the new "Dogar Sajji" one — the rebrand changes
 // app.getPath('userData')'s default location, and without this the app
 // would silently start from an empty database instead of the real data.
 function migrateUserDataFolderIfNeeded() {
@@ -50,7 +50,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: "Eden's Crust Pizza RMS",
+    title: "Dogar Sajji RMS",
     icon: path.join(__dirname, 'logo.png'),
     show: false,
     webPreferences: {
@@ -76,9 +76,9 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  app.setName("Eden's Crust Pizza");
+  app.setName("Dogar Sajji");
   if (process.platform === 'win32') {
-    app.setAppUserModelId('com.edenscrust.pizza.rms');
+    app.setAppUserModelId('com.dogarsajji.rms');
   }
 
   migrateUserDataFolderIfNeeded();

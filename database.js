@@ -20,12 +20,12 @@ function getSharedDbDirectory() {
   try {
     if (app && typeof app.getPath === 'function') {
       try {
-        dbDir = path.join(app.getPath('commonUserData'), 'EdensCrustPizza');
+        dbDir = path.join(app.getPath('commonUserData'), 'DogarSajji');
       } catch (e) {}
       if (!dbDir) {
         const commonDir = process.env.ALLUSERSPROFILE || process.env.ProgramData;
         if (commonDir) {
-          dbDir = path.join(commonDir, 'EdensCrustPizza');
+          dbDir = path.join(commonDir, 'DogarSajji');
         }
       }
       if (!dbDir) {
@@ -45,14 +45,14 @@ function initDatabase() {
   const dbDir = getSharedDbDirectory();
   if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 
-  const sharedPath = path.join(dbDir, 'edens-crust.db');
+  const sharedPath = path.join(dbDir, 'dogar-sajji.db');
 
   if (!fs.existsSync(sharedPath)) {
     try {
       const userDir = (app && typeof app.getPath === 'function') ? app.getPath('userData') : '';
       if (userDir && userDir !== dbDir) {
         const legacy1 = path.join(userDir, 'desi-bites.db');
-        const legacy2 = path.join(userDir, 'edens-crust.db');
+        const legacy2 = path.join(userDir, 'dogar-sajji.db');
         if (fs.existsSync(legacy2)) {
           fs.copyFileSync(legacy2, sharedPath);
         } else if (fs.existsSync(legacy1)) {
@@ -259,7 +259,7 @@ function createSchema() {
       meta        TEXT DEFAULT '{}'
     );
 
-    -- Roti Counter module was removed (not relevant to HFC Pizza). Table is
+    -- Roti Counter module was removed (not relevant to Dogar Sajji). Table is
     -- kept, unused, only so any historical records already in it aren't lost.
     CREATE TABLE IF NOT EXISTS roti_orders (
       id      INTEGER PRIMARY KEY,
