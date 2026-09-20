@@ -449,7 +449,9 @@ const ROLE_CRDogarTIALS = {};
 const SALES_RESTRICTED_ROLES = [];
 
 const ROLES = {
-  Admin: ['dashboard','menu','orders','kitchen','inventory','employees','finance']
+  Admin: ['dashboard','menu','orders','kitchen','inventory','employees','finance'],
+  Manager: ['dashboard','menu','orders','kitchen','inventory','employees','finance'],
+  'Order Taker': ['orders','tables']
 };
 
 const TABS = {
@@ -545,7 +547,9 @@ let unpaidBills = {};
 
 // ── USERS & AUTHENTICATION ──
 let appUsers = [
-  { username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin' }
+  { username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin / Manager' },
+  { username: 'order1', password: '1234', role: 'Order Taker', name: 'Order Taker 1' },
+  { username: 'order2', password: '1234', role: 'Order Taker', name: 'Order Taker 2' }
 ];
 
 async function loadAppUsers(){
@@ -625,7 +629,7 @@ async function doLogin(){
     document.getElementById('btn-change-pwd').style.display = 'inline-flex';
     
     buildNav();
-    showSection('dashboard');
+    showSection(currentRole === 'Order Taker' ? 'orders' : 'dashboard');
 
     await migrateLocalStorageIfNeeded().catch(e => console.warn('Migration:', e));
     await loadFromLocal();
@@ -645,9 +649,27 @@ function doLogout(){
 
 // ── NAV ──
 function buildNav(){
-  const tabs = ROLES['Admin'];
-  const nav = document.getElementById('nav-tabs');
-  nav.innerHTML = tabs.map(t=>`<div class="nav-tab" data-section="${t}" onclick="showSection('${t}')">${TABS[t]}</div>`).join('');
+  const nav=document.getElementById('nav-tabs');if(!nav)return;
+  const allowed=ROLES[currentRole]||ROLES.Admin;
+  nav.innerHTML=allowed.map(t=>`<div class="nav-tab ${activeSection===t?'active':''}" onclick="showSection('${t}')">${TABS[t]||t}</div>`).join('');
+
+  // Topbar visibility based on role
+  const isOrderTaker = (currentRole === 'Order Taker');
+  ['btn-cloud-sync','btn-printer-settings','btn-db-backup','btn-change-pwd'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isOrderTaker ? 'none' : 'inline-flex';
+  });
+
+  const mobBar = document.getElementById('mobile-bottom-bar');
+  if (mobBar) {
+    if (isOrderTaker) {
+      mobBar.innerHTML = `
+        <div class="mobile-nav-item active" onclick="goToNewOrder(); updateMobileNav(this);"><span>🛍️</span>Order</div>
+        <div class="mobile-nav-item" onclick="showSection('tables'); updateMobileNav(this);"><span>🪑</span>Tables & Bills</div>
+      `;
+    }
+  }
+}" onclick="showSection('${t}')">${TABS[t]}</div>`).join('');
 }
 
 function showSection(sec){
@@ -2677,83 +2699,116 @@ async function getAvailablePrinters() {
 
 async function openPrinterSettings() {
   showModal(`
-    <h3>🖨 Receipt Printer Settings</h3>
-    <p style="font-size:.82rem;color:var(--text2);margin-bottom:1rem">Searching for connected thermal & POS printers...</p>
-    <div style="text-align:center;padding:2rem;color:var(--gold);font-weight:600">⏳ Scanning system & USB printers...</div>
+    <h3>🖨 Dual Receipt Printer Settings</h3>
+    <p style="font-size:.82rem;color:var(--text2);margin-bottom:1rem">Scanning connected POS & thermal printers...</p>
+    <div style="text-align:center;padding:2rem;color:var(--gold);font-weight:600">⏳ Scanning USB & Network printers...</div>
   `);
 
   const printers = await getAvailablePrinters();
-  const currentDevice = localStorage.getItem('hfc_printer_device') || '';
-  const currentSilent = localStorage.getItem('hfc_silent_print') !== 'false';
+  const kitchenDevice = localStorage.getItem('dogar_kitchen_printer') || localStorage.getItem('hfc_printer_device') || '';
+  const billDevice = localStorage.getItem('dogar_bill_printer') || localStorage.getItem('hfc_printer_device') || '';
+  const currentSilent = localStorage.getItem('dogar_silent_print') !== 'false';
 
-  let defaultThermalName = '';
-  const optionsHtml = printers.length > 0
-    ? `<option value="">-- System Default Printer --</option>` + printers.map(p => {
-        const isSel = (p.name === currentDevice);
-        if (p.isThermal && !defaultThermalName) defaultThermalName = p.name;
-        const portStr = p.port ? ` [Port: ${p.port}]` : (p.description ? ` [${p.description}]` : '');
-        const thermalBadge = p.isThermal ? ' 🖨️ Thermal' : '';
-        const defBadge = p.isDefault ? ' ★ System Default' : '';
-        return `<option value="${p.name}" ${isSel ? 'selected' : ''}>${p.name}${portStr}${thermalBadge}${defBadge}</option>`;
-      }).join('')
-    : `<option value="">-- System Default Printer --</option>`;
+  const makeOptions = (selectedName) => {
+    if (printers.length === 0) return '<option value="">-- System Default Printer --</option>';
+    return '<option value="">-- System Default Printer --</option>' + printers.map(p => {
+      const isSel = (p.name === selectedName);
+      const portStr = p.port ? ` [Port: ${p.port}]` : '';
+      const thermalBadge = p.isThermal ? ' 🖨️ Thermal' : '';
+      const defBadge = p.isDefault ? ' ★ System Default' : '';
+      return `<option value="${p.name}" ${isSel ? 'selected' : ''}>${p.name}${portStr}${thermalBadge}${defBadge}</option>`;
+    }).join('');
+  };
 
   showModal(`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-      <h3 style="margin:0">🖨 Receipt Printer Settings</h3>
+      <h3 style="margin:0">🖨 Dual Thermal Printer Settings</h3>
       <button class="btn-sm btn-outline" onclick="openPrinterSettings()">🔄 Rescan Printers</button>
     </div>
-    <p style="font-size:.82rem;color:var(--text2);margin-bottom:1.25rem">Configure your thermal receipt printer for instant 1-click POS checkout.</p>
+    <p style="font-size:.82rem;color:var(--text2);margin-bottom:1.25rem">Configure separate thermal printers for Kitchen Orders (KOT) & Counter Bills.</p>
 
-    <div style="margin-bottom:1.25rem">
-      <label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:1px">Selected Printer (${printers.length} detected)</label>
-      <select id="ps-printer-select" class="input-field" style="width:100%">
-        ${optionsHtml}
+    <!-- KITCHEN PRINTER -->
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);padding:1rem;margin-bottom:1rem">
+      <label style="font-size:.85rem;color:var(--gold);font-weight:600;display:block;margin-bottom:.4rem">👨‍🍳 Kitchen Printer (KOT Receipts)</label>
+      <select id="ps-kitchen-select" class="input-field" style="width:100%">
+        ${makeOptions(kitchenDevice)}
       </select>
-      <span style="font-size:.72rem;color:var(--text3);margin-top:.3rem;display:block">Choose your thermal printer (e.g. POS-80 11.3.0.1 (Copy 2), Epson, Xprinter)</span>
+      <span style="font-size:.72rem;color:var(--text3);margin-top:.3rem;display:block">Prints Kitchen Order Tickets when Order Takers click "Send to Kitchen"</span>
+    </div>
+
+    <!-- COUNTER BILL PRINTER -->
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);padding:1rem;margin-bottom:1.25rem">
+      <label style="font-size:.85rem;color:var(--gold);font-weight:600;display:block;margin-bottom:.4rem">🧾 Counter / Manager Bill Printer</label>
+      <select id="ps-bill-select" class="input-field" style="width:100%">
+        ${makeOptions(billDevice)}
+      </select>
+      <span style="font-size:.72rem;color:var(--text3);margin-top:.3rem;display:block">Prints final customer receipt at Manager PC when bill is settled</span>
     </div>
 
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);padding:.9rem 1rem;margin-bottom:1.25rem;display:flex;align-items:center;justify-content:space-between">
       <div>
-        <div style="font-weight:600;font-size:.9rem;color:var(--text1)">⚡ 1-Click Silent Direct Printing</div>
-        <div style="font-size:.75rem;color:var(--text2);margin-top:.2rem">Bypass print preview dialog and print receipt instantly to thermal printer</div>
+        <div style="font-weight:600;font-size:.9rem;color:var(--text1)">⚡ Direct 1-Click Silent Printing</div>
+        <div style="font-size:.75rem;color:var(--text2);margin-top:.2rem">Bypass print dialogs and print directly to thermal printers</div>
       </div>
       <input type="checkbox" id="ps-silent-toggle" ${currentSilent ? 'checked' : ''} style="width:20px;height:20px;accent-color:var(--gold);cursor:pointer">
     </div>
 
     <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center">
-      <button class="btn-outline" onclick="testReceiptPrint()">🖨 Test Print Slip</button>
+      <div style="display:flex;gap:.4rem">
+        <button class="btn-outline" onclick="testDualPrint('kitchen')" style="font-size:.78rem">🖨 Test Kitchen</button>
+        <button class="btn-outline" onclick="testDualPrint('bill')" style="font-size:.78rem">🧾 Test Counter</button>
+      </div>
       <div style="display:flex;gap:.5rem">
         <button class="btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn-primary" onclick="savePrinterSettings()">Save Settings</button>
+        <button class="btn-primary" onclick="saveDualPrinterSettings()">Save Printer Settings</button>
       </div>
     </div>
   `);
 }
 
-function savePrinterSettings() {
-  const sel = document.getElementById('ps-printer-select')?.value || '';
+function saveDualPrinterSettings() {
+  const kitchenSel = document.getElementById('ps-kitchen-select')?.value || '';
+  const billSel = document.getElementById('ps-bill-select')?.value || '';
   const silent = document.getElementById('ps-silent-toggle')?.checked ?? true;
-  localStorage.setItem('hfc_printer_device', sel);
-  localStorage.setItem('hfc_silent_print', silent ? 'true' : 'false');
+
+  localStorage.setItem('dogar_kitchen_printer', kitchenSel);
+  localStorage.setItem('dogar_bill_printer', billSel);
+  localStorage.setItem('dogar_silent_print', silent ? 'true' : 'false');
   closeModal();
-  toast(silent ? '1-Click direct thermal printing enabled ✓' : 'Printer settings saved ✓');
+  toast('Dual thermal printer configuration saved! ✓', 'success');
 }
 
-async function testReceiptPrint() {
-  const sel = document.getElementById('ps-printer-select')?.value || localStorage.getItem('hfc_printer_device') || '';
+async function testDualPrint(target) {
+  const kitchenSel = document.getElementById('ps-kitchen-select')?.value || localStorage.getItem('dogar_kitchen_printer') || '';
+  const billSel = document.getElementById('ps-bill-select')?.value || localStorage.getItem('dogar_bill_printer') || '';
   const silent = document.getElementById('ps-silent-toggle')?.checked || false;
-  const testHtml = `<!DOCTYPE html><html><head><style>@page { size: 80mm portrait; margin: 0; } body{font-family:monospace;padding:15px;text-align:center}</style></head><body><h2>Dogar Sajji</h2><p>*** TEST PRINT SUCCESSFUL ***</p><p>${new Date().toLocaleString()}</p></body></html>`;
 
+  const targetPrinter = (target === 'kitchen') ? kitchenSel : billSel;
+  const label = (target === 'kitchen') ? 'KITCHEN PRINTER TEST' : 'COUNTER BILL PRINTER TEST';
+  const testHtml = `<!DOCTYPE html><html><head><style>@page { size: 80mm portrait; margin: 0; } body{font-family:monospace;padding:15px;text-align:center}</style></head><body><h2>Dogar Sajji</h2><h3>*** ${label} ***</h3><p>${new Date().toLocaleString()}</p></body></html>`;
+
+  toast(`Sending test print to ${target} printer...`, 'info');
+  await sendPrintJob(testHtml, targetPrinter, silent);
+}
+
+async function sendPrintJob(htmlContent, deviceName, silent = true) {
   if (window.api && window.api.printReceipt) {
-    toast('Sending test print...', 'info');
-    const res = await window.api.printReceipt(testHtml, { silent, deviceName: sel });
-    if (res && res.success) toast('Test print sent to printer! ✓');
-    else toast('Test print failed: ' + (res?.error || 'Unknown error'), 'error');
+    try {
+      const res = await window.api.printReceipt(htmlContent, { silent, deviceName });
+      return res && res.success;
+    } catch(e) {
+      fallbackPrintWindow(htmlContent);
+      return true;
+    }
   } else {
-    fallbackPrintWindow(testHtml);
+    // Web / Mobile Mode (Send to Central Node Server over Wi-Fi)
+    const res = await apiPost('/api/print', { html: htmlContent, deviceName });
+    if (res && res.success) return true;
+    fallbackPrintWindow(htmlContent);
+    return true;
   }
 }
+
 
 // ── CSV EXPORT FOR REPORTS ──
 function exportActiveFinanceCSV() {
