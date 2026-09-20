@@ -457,9 +457,195 @@ const TABS = {
 // State
 let orders = [];
 let tables = [];
-let menuCategories = [];
-let menuItems = [];
-let deals = [];
+let menuCategories = [
+  "Sajji With Rice (چاول کے ساتھ)",
+  "Sajji Without Rice (چاول کے بغیر)",
+  "Rice Sides (چاول)",
+  "Raita & Salads (رائتہ)",
+  "Cold Drinks & Water (کولڈ ڈرنکس)"
+];
+
+let menuItems = [
+  {
+    "id": 1,
+    "name": "Full Sajji with Rice (فل سجی باچاول)",
+    "cat": "Sajji With Rice (چاول کے ساتھ)",
+    "price": 1950,
+    "discount": 0,
+    "desc": "Delicious full roasted chicken sajji served with aromatic rice",
+    "img": "🍗",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 2,
+    "name": "Half Sajji with Rice (ہاف سجی باچاول)",
+    "cat": "Sajji With Rice (چاول کے ساتھ)",
+    "price": 1050,
+    "discount": 0,
+    "desc": "Half roasted chicken sajji served with aromatic rice",
+    "img": "🍗",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 3,
+    "name": "Quarter Sajji with Rice (کوارٹر سجی باچاول)",
+    "cat": "Sajji With Rice (چاول کے ساتھ)",
+    "price": 600,
+    "discount": 0,
+    "desc": "Quarter roasted chicken sajji served with aromatic rice",
+    "img": "🍗",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 4,
+    "name": "Full Sajji without Rice (فل سجی بغیر چاول)",
+    "cat": "Sajji Without Rice (چاول کے بغیر)",
+    "price": 1600,
+    "discount": 0,
+    "desc": "Traditional full roasted chicken sajji",
+    "img": "🍗",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 5,
+    "name": "Half Sajji without Rice (ہاف سجی بغیر چاول)",
+    "cat": "Sajji Without Rice (چاول کے بغیر)",
+    "price": 800,
+    "discount": 0,
+    "desc": "Traditional half roasted chicken sajji",
+    "img": "🍗",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 6,
+    "name": "Quarter Sajji without Rice (کوارٹر سجی بغیر چاول)",
+    "cat": "Sajji Without Rice (چاول کے بغیر)",
+    "price": 400,
+    "discount": 0,
+    "desc": "Traditional quarter roasted chicken sajji",
+    "img": "🍗",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 7,
+    "name": "Full Rice (فل چاول)",
+    "cat": "Rice Sides (چاول)",
+    "price": 400,
+    "discount": 0,
+    "desc": "Full portion of specially seasoned sajji rice",
+    "img": "🍚",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 8,
+    "name": "Half Rice (ہاف چاول)",
+    "cat": "Rice Sides (چاول)",
+    "price": 250,
+    "discount": 0,
+    "desc": "Half portion of specially seasoned sajji rice",
+    "img": "🍚",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 9,
+    "name": "Fresh Raita (رائتہ)",
+    "cat": "Raita & Salads (رائتہ)",
+    "price": 70,
+    "discount": 0,
+    "desc": "Fresh mint & zeera raita",
+    "img": "🥣",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 10,
+    "name": "Half Mineral Water (ہاف واٹر)",
+    "cat": "Cold Drinks & Water (کولڈ ڈرنکس)",
+    "price": 60,
+    "discount": 0,
+    "desc": "500ml Mineral Water",
+    "img": "💧",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 11,
+    "name": "Full Mineral Water (فل واٹر)",
+    "cat": "Cold Drinks & Water (کولڈ ڈرنکس)",
+    "price": 120,
+    "discount": 0,
+    "desc": "1.5 Liter Mineral Water",
+    "img": "💧",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 12,
+    "name": "Drink (1.5 Liter)",
+    "cat": "Cold Drinks & Water (کولڈ ڈرنکس)",
+    "price": 210,
+    "discount": 0,
+    "desc": "1.5 Liter Chilled Soft Drink",
+    "img": "🥤",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 13,
+    "name": "Drink (1 Liter)",
+    "cat": "Cold Drinks & Water (کولڈ ڈرنکس)",
+    "price": 170,
+    "discount": 0,
+    "desc": "1.0 Liter Chilled Soft Drink",
+    "img": "🥤",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 14,
+    "name": "Drink (NR Regular)",
+    "cat": "Cold Drinks & Water (کولڈ ڈرنکس)",
+    "price": 80,
+    "discount": 0,
+    "desc": "Regular NR Chilled Beverage",
+    "img": "🥤",
+    "available": true,
+    "variants": []
+  }
+];
+
+let deals = [
+  {
+    "id": 1,
+    "name": "Full Sajji Deal with Rice & Raita",
+    "category": "Special Sajji Deals",
+    "price": 2020,
+    "available": true,
+    "items": [
+      "1x Full Sajji with Rice",
+      "1x Fresh Raita"
+    ]
+  },
+  {
+    "id": 2,
+    "name": "Half Sajji Deal with Rice & Raita",
+    "category": "Special Sajji Deals",
+    "price": 1120,
+    "available": true,
+    "items": [
+      "1x Half Sajji with Rice",
+      "1x Fresh Raita"
+    ]
+  }
+];
 let inventory = [];
 let employees = [];
 let activeEmpTab = 'list';
