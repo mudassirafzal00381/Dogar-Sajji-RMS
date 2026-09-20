@@ -658,10 +658,34 @@ function clearAllData() {
 
 function getAppUsers() {
   const rows = db.prepare('SELECT * FROM app_users').all();
+  const defaultUsers = [
+    { username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin / Manager' },
+    { username: 'order1', password: '1234', role: 'Order Taker', name: 'Order Taker 1' },
+    { username: 'order2', password: '1234', role: 'Order Taker', name: 'Order Taker 2' }
+  ];
+
   if (rows.length === 0) {
-    db.prepare('INSERT INTO app_users (username, password, role, name) VALUES (?, ?, ?, ?)').run('admin', '1234', 'Admin', 'Master Admin');
-    return [{ username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin' }];
+    const stmt = db.prepare('INSERT INTO app_users (username, password, role, name) VALUES (?, ?, ?, ?)');
+    for (const u of defaultUsers) {
+      stmt.run(u.username, u.password, u.role, u.name);
+    }
+    return defaultUsers;
   }
+
+  // Ensure default order takers exist if only admin was present in database
+  let updated = false;
+  const insertStmt = db.prepare('INSERT OR IGNORE INTO app_users (username, password, role, name) VALUES (?, ?, ?, ?)');
+  for (const u of defaultUsers) {
+    if (!rows.some(r => String(r.username).toLowerCase() === u.username.toLowerCase())) {
+      insertStmt.run(u.username, u.password, u.role, u.name);
+      updated = true;
+    }
+  }
+
+  if (updated) {
+    return db.prepare('SELECT * FROM app_users').all();
+  }
+
   return rows;
 }
 
