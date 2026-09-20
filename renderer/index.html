@@ -805,7 +805,7 @@ function renderMenuGrid(){
   <div class="menu-grid">
     ${filtered.map(i=>`
       <div class="menu-item" id="mi-${i.id}">
-        <div class="menu-img" style="${i.img&&i.img.startsWith('data:')?`background-image:url(${i.img});background-size:cover;background-position:center;`:''}">${i.img&&i.img.startsWith('data:')?'':`<span style="font-size:2.5rem">${i.img}</span>`}${i.imgEmoji&&i.img.startsWith('data:')?`<span style="position:absolute;bottom:4px;left:6px;font-size:1.3rem;line-height:1">${i.imgEmoji}</span>`:``}${i.discount?`<span class="discount-badge">SALE</span>`:''}</div>
+        ${renderMenuItemImg(i)}
         <div class="menu-info">
           <div class="menu-name">${i.name}</div>
           <div class="menu-cat">${i.cat}</div>
@@ -1415,7 +1415,7 @@ function renderMenuGridItems(){
   // Render Menu Items
   html += itemsList.map(i => `
     <div class="menu-item" onclick="addToCart(${i.id})" style="cursor:pointer">
-      <div class="menu-img" style="${i.img&&i.img.startsWith('data:')?`background-image:url(${i.img});background-size:cover;background-position:center;`:''}">${i.img&&i.img.startsWith('data:')?'':`<span style="font-size:2.5rem">${i.img}</span>`}${i.imgEmoji&&i.img.startsWith('data:')?`<span style="position:absolute;bottom:4px;left:6px;font-size:1.2rem">${i.imgEmoji}</span>`:``}${i.discount?`<span class="discount-badge">SALE</span>`:''}</div>
+      ${renderMenuItemImg(i)}
       <div class="menu-info">
         <div class="menu-name">${i.name}</div>
         <div class="menu-cat">${i.cat}</div>
@@ -1498,7 +1498,7 @@ function openSelectSizeModal(id){
 
   showModal(`
     <div style="text-align:center;margin-bottom:1rem">
-      <div style="font-size: 2.2rem; margin-bottom: .25rem">${item.img && !item.img.startsWith('data:') ? item.img : '🍕'}</div>
+      <div style="display:flex;justify-content:center;margin-bottom:.5rem">${renderMenuItemImg(item, 'width:80px;height:80px;border-radius:50%')}</div>
       <h3 style="margin-bottom:.25rem">Select Size for <span style="color:var(--gold)">${item.name}</span></h3>
       <p style="font-size:.82rem;color:var(--text2)">Choose desired size option</p>
     </div>
@@ -4489,20 +4489,160 @@ const OFFICIAL_DOGAR_CATEGORIES = [
 ];
 
 const OFFICIAL_DOGAR_ITEMS = [
-  { id: 1, name: "Full Sajji with Rice (فل سجی باچاول)", cat: "Sajji With Rice (چاول کے ساتھ)", price: 1950, discount: 0, desc: "Delicious full roasted chicken sajji served with aromatic rice", img: "assets/items/sajji_rice.jpg", available: true, variants: [] },
-  { id: 2, name: "Half Sajji with Rice (ہاف سجی باچاول)", cat: "Sajji With Rice (چاول کے ساتھ)", price: 1050, discount: 0, desc: "Half roasted chicken sajji served with aromatic rice", img: "assets/items/sajji_rice.jpg", available: true, variants: [] },
-  { id: 3, name: "Quarter Sajji with Rice (کوارٹر سجی باچاول)", cat: "Sajji With Rice (چاول کے ساتھ)", price: 600, discount: 0, desc: "Quarter roasted chicken sajji served with aromatic rice", img: "assets/items/sajji_rice.jpg", available: true, variants: [] },
-  { id: 4, name: "Full Sajji without Rice (فل سجی بغیر چاول)", cat: "Sajji Without Rice (چاول کے بغیر)", price: 1600, discount: 0, desc: "Traditional full roasted chicken sajji", img: "assets/items/sajji_chicken.jpg", available: true, variants: [] },
-  { id: 5, name: "Half Sajji without Rice (ہاف سجی بغیر چاول)", cat: "Sajji Without Rice (چاول کے بغیر)", price: 800, discount: 0, desc: "Traditional half roasted chicken sajji", img: "assets/items/sajji_chicken.jpg", available: true, variants: [] },
-  { id: 6, name: "Quarter Sajji without Rice (کوارٹر سجی بغیر چاول)", cat: "Sajji Without Rice (چاول کے بغیر)", price: 400, discount: 0, desc: "Traditional quarter roasted chicken sajji", img: "assets/items/sajji_chicken.jpg", available: true, variants: [] },
-  { id: 7, name: "Full Rice (فل چاول)", cat: "Rice Sides (چاول)", price: 400, discount: 0, desc: "Full portion of specially seasoned sajji rice", img: "assets/items/rice_side.jpg", available: true, variants: [] },
-  { id: 8, name: "Half Rice (ہاف چاول)", cat: "Rice Sides (چاول)", price: 250, discount: 0, desc: "Half portion of specially seasoned sajji rice", img: "assets/items/rice_side.jpg", available: true, variants: [] },
-  { id: 9, name: "Fresh Raita (رائتہ)", cat: "Raita & Salads (رائتہ)", price: 70, discount: 0, desc: "Fresh mint & zeera raita", img: "assets/items/raita.jpg", available: true, variants: [] },
-  { id: 10, name: "Half Mineral Water (ہاف واٹر)", cat: "Cold Drinks & Water (کولڈ ڈرنکس)", price: 60, discount: 0, desc: "500ml Mineral Water", img: "assets/items/drinks.jpg", available: true, variants: [] },
-  { id: 11, name: "Full Mineral Water (فل واٹر)", cat: "Cold Drinks & Water (کولڈ ڈرنکس)", price: 120, discount: 0, desc: "1.5 Liter Mineral Water", img: "assets/items/drinks.jpg", available: true, variants: [] },
-  { id: 12, name: "Drink (1.5 Liter)", cat: "Cold Drinks & Water (کولڈ ڈرنکس)", price: 210, discount: 0, desc: "1.5 Liter Chilled Soft Drink", img: "assets/items/drinks.jpg", available: true, variants: [] },
-  { id: 13, name: "Drink (1 Liter)", cat: "Cold Drinks & Water (کولڈ ڈرنکس)", price: 170, discount: 0, desc: "1.0 Liter Chilled Soft Drink", img: "assets/items/drinks.jpg", available: true, variants: [] },
-  { id: 14, name: "Drink (NR Regular)", cat: "Cold Drinks & Water (کولڈ ڈرنکس)", price: 80, discount: 0, desc: "Regular NR Chilled Beverage", img: "assets/items/drinks.jpg", available: true, variants: [] }
+  {
+    "id": 1,
+    "name": "Full Sajji with Rice (فل سجی باچاول)",
+    "cat": "Sajji With Rice (چاول کے ساتھ)",
+    "price": 1950,
+    "discount": 0,
+    "desc": "Delicious full roasted chicken sajji served with aromatic rice",
+    "img": "🍗",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 2,
+    "name": "Half Sajji with Rice (ہاف سجی باچاول)",
+    "cat": "Sajji With Rice (چاول کے ساتھ)",
+    "price": 1050,
+    "discount": 0,
+    "desc": "Half roasted chicken sajji served with aromatic rice",
+    "img": "🍗",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 3,
+    "name": "Quarter Sajji with Rice (کوارٹر سجی باچاول)",
+    "cat": "Sajji With Rice (چاول کے ساتھ)",
+    "price": 600,
+    "discount": 0,
+    "desc": "Quarter roasted chicken sajji served with aromatic rice",
+    "img": "🍗",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 4,
+    "name": "Full Sajji without Rice (فل سجی بغیر چاول)",
+    "cat": "Sajji Without Rice (چاول کے بغیر)",
+    "price": 1600,
+    "discount": 0,
+    "desc": "Traditional full roasted chicken sajji",
+    "img": "🍗",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 5,
+    "name": "Half Sajji without Rice (ہاف سجی بغیر چاول)",
+    "cat": "Sajji Without Rice (چاول کے بغیر)",
+    "price": 800,
+    "discount": 0,
+    "desc": "Traditional half roasted chicken sajji",
+    "img": "🍗",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 6,
+    "name": "Quarter Sajji without Rice (کوارٹر سجی بغیر چاول)",
+    "cat": "Sajji Without Rice (چاول کے بغیر)",
+    "price": 400,
+    "discount": 0,
+    "desc": "Traditional quarter roasted chicken sajji",
+    "img": "🍗",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 7,
+    "name": "Full Rice (فل چاول)",
+    "cat": "Rice Sides (چاول)",
+    "price": 400,
+    "discount": 0,
+    "desc": "Full portion of specially seasoned sajji rice",
+    "img": "🍚",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 8,
+    "name": "Half Rice (ہاف چاول)",
+    "cat": "Rice Sides (چاول)",
+    "price": 250,
+    "discount": 0,
+    "desc": "Half portion of specially seasoned sajji rice",
+    "img": "🍚",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 9,
+    "name": "Fresh Raita (رائتہ)",
+    "cat": "Raita & Salads (رائتہ)",
+    "price": 70,
+    "discount": 0,
+    "desc": "Fresh mint & zeera raita",
+    "img": "🥣",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 10,
+    "name": "Half Mineral Water (ہاف واٹر)",
+    "cat": "Cold Drinks & Water (کولڈ ڈرنکس)",
+    "price": 60,
+    "discount": 0,
+    "desc": "500ml Mineral Water",
+    "img": "💧",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 11,
+    "name": "Full Mineral Water (فل واٹر)",
+    "cat": "Cold Drinks & Water (کولڈ ڈرنکس)",
+    "price": 120,
+    "discount": 0,
+    "desc": "1.5 Liter Mineral Water",
+    "img": "💧",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 12,
+    "name": "Drink (1.5 Liter)",
+    "cat": "Cold Drinks & Water (کولڈ ڈرنکس)",
+    "price": 210,
+    "discount": 0,
+    "desc": "1.5 Liter Chilled Soft Drink",
+    "img": "🥤",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 13,
+    "name": "Drink (1 Liter)",
+    "cat": "Cold Drinks & Water (کولڈ ڈرنکس)",
+    "price": 170,
+    "discount": 0,
+    "desc": "1.0 Liter Chilled Soft Drink",
+    "img": "🥤",
+    "available": true,
+    "variants": []
+  },
+  {
+    "id": 14,
+    "name": "Drink (NR Regular)",
+    "cat": "Cold Drinks & Water (کولڈ ڈرنکس)",
+    "price": 80,
+    "discount": 0,
+    "desc": "Regular NR Chilled Beverage",
+    "img": "🥤",
+    "available": true,
+    "variants": []
+  }
 ];
 
 const OFFICIAL_DOGAR_DEALS = [
