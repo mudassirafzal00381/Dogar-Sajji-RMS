@@ -69,6 +69,9 @@ function registerIpcHandlers(db) {
     'db:getCancelledOrders': () => db.getCancelledOrders(),
     'db:saveCancelledOrders': (e, c) => db.saveCancelledOrders(c),
 
+    'db:getDailyCloseouts': () => db.getDailyCloseouts(),
+    'db:saveDailyCloseouts': (e, c) => db.saveDailyCloseouts(c),
+
     'db:isEmpty': () => db.isDbEmpty(),
     'db:clearAllData': () => db.clearAllData(),
     'db:migrateFromLocalStorage': (e, legacy) => db.migrateFromLocalStorage(legacy),

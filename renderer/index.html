@@ -832,6 +832,7 @@ const TABS = {
 // State
 let orders = [];
 let cancelledOrders = [];
+let dailyCloseouts = [];
 let tables = [];
 let menuCategories = [
   "Sajji With Rice (چاول کے ساتھ)",
@@ -4390,7 +4391,8 @@ function renderFinance(){
   return `
   <div class="section-header">
     <div><div class="section-title">Finance & Reports</div><div class="section-sub">Sales analytics, expenses & petty cash</div></div>
-    <div style="display:flex;gap:.5rem">
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+      <button class="print-btn" style="background:var(--gold);color:var(--dark);font-weight:700" onclick="triggerEndDaySales()">🌙 End Day Sales</button>
       <button class="print-btn" onclick="exportActiveFinanceCSV()">📊 Export CSV</button>
       <button class="print-btn" onclick="window.print()">🖨 Print Report</button>
     </div>
@@ -4520,6 +4522,215 @@ function renderCancelledOrdersView() {
   </div>`;
 }
 
+function triggerEndDaySales() {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const safeSales = Array.isArray(salesLedger) ? salesLedger : [];
+  const safeExp = Array.isArray(expenseLedger) ? expenseLedger : [];
+  const safePetty = Array.isArray(pettyCash) ? pettyCash : [];
+  const safeCancelled = Array.isArray(cancelledOrders) ? cancelledOrders : [];
+
+  const todaySales = safeSales.filter(s => s && s.date === todayStr).reduce((sum, s) => sum + (s.total || 0), 0);
+  const todaySalesCount = safeSales.filter(s => s && s.date === todayStr).length;
+  const todayExpenses = safeExp.filter(e => e && e.date === todayStr).reduce((sum, e) => sum + (e.amount || 0), 0);
+  const todayPetty = safePetty.filter(p => p && p.date === todayStr).reduce((sum, p) => sum + (p.amount || 0), 0);
+  const totalTodayExpenses = todayExpenses + todayPetty;
+  const todayProfit = todaySales - totalTodayExpenses;
+  const cancelledToday = safeCancelled.filter(c => c && c.date === todayStr);
+  const todayCancelledCost = cancelledToday.reduce((sum, c) => sum + (c.cost || 0), 0);
+
+  showModal(`
+    <div style="padding:.5rem">
+      <h3 style="color:var(--gold);font-family:'Playfair Display',serif;margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">
+        🌙 End Day Sales Closeout & Owner Receipt
+      </h3>
+      <p style="font-size:.84rem;color:var(--text2);margin-bottom:1rem;line-height:1.4">
+        Closing today's sales summary (${new Date().toLocaleDateString('en-PK', { weekday:'long', year:'numeric', month:'long', day:'numeric'})}). This action will generate the official <strong>1 Day Owner Receipt</strong> containing today's total sales, expenses, net profit, and itemized cancelled orders cost.
+      </p>
+
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);padding:1rem;margin-bottom:1rem;font-size:.85rem">
+        <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)">
+          <span>💰 Today's Total Sales (${todaySalesCount} orders)</span>
+          <strong style="color:var(--gold)">Rs ${todaySales.toLocaleString()}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)">
+          <span>💸 Today's Total Expenses (Operating + Petty Cash)</span>
+          <strong style="color:var(--red)">Rs ${totalTodayExpenses.toLocaleString()}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)">
+          <span>📈 Today's Total Net Profit</span>
+          <strong style="color:${todayProfit >= 0 ? 'var(--green)' : 'var(--red)'}">Rs ${todayProfit.toLocaleString()}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:.35rem 0">
+          <span>🚫 Today's Cancelled Orders (${cancelledToday.length} events)</span>
+          <strong style="color:var(--red)">Rs ${todayCancelledCost.toLocaleString()}</strong>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;margin-top:1rem">
+        <button class="btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn-primary" style="padding:.65rem 1.4rem;font-weight:700;background:var(--gold);color:var(--dark);border-color:var(--gold)" onclick="confirmEndDaySales()">
+          🖨 Print Owner Receipt & Record Day Closeout
+        </button>
+      </div>
+    </div>
+  `);
+}
+
+async function confirmEndDaySales() {
+  closeModal();
+  await printEndDaySalesReport();
+}
+
+async function printEndDaySalesReport() {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const nowStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const safeSales = Array.isArray(salesLedger) ? salesLedger : [];
+  const safeExp = Array.isArray(expenseLedger) ? expenseLedger : [];
+  const safePetty = Array.isArray(pettyCash) ? pettyCash : [];
+  const safeCancelled = Array.isArray(cancelledOrders) ? cancelledOrders : [];
+
+  const todaySales = safeSales.filter(s => s && s.date === todayStr).reduce((sum, s) => sum + (s.total || 0), 0);
+  const todaySalesCount = safeSales.filter(s => s && s.date === todayStr).length;
+  const todayExpenses = safeExp.filter(e => e && e.date === todayStr).reduce((sum, e) => sum + (e.amount || 0), 0);
+  const todayPetty = safePetty.filter(p => p && p.date === todayStr).reduce((sum, p) => sum + (p.amount || 0), 0);
+  const totalTodayExpenses = todayExpenses + todayPetty;
+  const todayProfit = todaySales - totalTodayExpenses;
+  const cancelledToday = safeCancelled.filter(c => c && c.date === todayStr);
+  const todayCancelledCost = cancelledToday.reduce((sum, c) => sum + (c.cost || 0), 0);
+  const marginPct = todaySales > 0 ? ((todayProfit / todaySales) * 100).toFixed(1) : 0;
+
+  // Record 1 Day closeout event into dailyCloseouts
+  const closeoutRecord = {
+    id: 'DAY' + Date.now(),
+    date: todayStr,
+    time: nowStr,
+    totalSales: todaySales,
+    salesCount: todaySalesCount,
+    totalExpenses: totalTodayExpenses,
+    totalProfit: todayProfit,
+    totalCancelledCost: todayCancelledCost,
+    cancelledCount: cancelledToday.length,
+    closedBy: currentUser || 'Admin',
+    timestamp: Date.now()
+  };
+
+  if (!Array.isArray(dailyCloseouts)) dailyCloseouts = [];
+  dailyCloseouts.unshift(closeoutRecord);
+  await saveToLocal();
+
+  // Thermal Receipt HTML for Owner
+  const receiptHtml = `<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
+  <title>End Day Sales Report - ${todayStr}</title>
+  <style>
+    @page { size: 80mm portrait; margin: 0; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      color: #000 !important;
+      background: #fff;
+      width: 80mm;
+      padding: 4mm 4mm 8mm 4mm;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .center { text-align: center; }
+    .right { text-align: right; }
+    .bold { font-weight: bold; }
+    .divider { border-top: 1px dashed #000; margin: 5px 0; }
+    .divider-solid { border-top: 2px solid #000; margin: 5px 0; }
+    .row { display: flex; justify-content: space-between; margin: 3px 0; font-size: 12px; }
+    .big-box {
+      border: 2px solid #000;
+      padding: 6px;
+      margin: 6px 0;
+    }
+    .cancel-item { font-size:11px; margin: 3px 0; padding-left:4px; border-left:2px solid #000; }
+  </style>
+  </head><body>
+
+  <div class="center bold" style="font-size:15px;letter-spacing:1px">DOGAR SAJJI</div>
+  <div class="center" style="font-size:10px">In Front of Govt Graduate College, Multan Road, Muzaffargarh</div>
+  <div class="center" style="font-size:10px">Ph: 0300-1863406 / 0343-4763406</div>
+  
+  <div class="divider-solid"></div>
+  <div class="center bold" style="font-size:13px;letter-spacing:1px;margin:3px 0">*** END OF DAY SALES REPORT ***</div>
+  <div class="center bold" style="font-size:11px;margin-bottom:3px">[ RECEIPT GIVEN TO OWNER ]</div>
+  <div class="divider"></div>
+
+  <div class="row"><span>Date:</span><span class="bold">${todayStr}</span></div>
+  <div class="row"><span>Time:</span><span>${nowStr}</span></div>
+  <div class="row"><span>Closed By:</span><span class="bold">${currentUser || 'Admin'}</span></div>
+  <div class="row"><span>Day Status:</span><span class="bold">1 DAY CALCULATED & CLOSED</span></div>
+
+  <div class="divider-solid"></div>
+
+  <div class="big-box">
+    <div class="row bold" style="font-size:13px"><span>TODAY'S TOTAL SALES:</span><span>Rs ${todaySales.toLocaleString()}</span></div>
+    <div class="row" style="font-size:10px;margin-bottom:4px"><span>Total Orders Settled:</span><span>${todaySalesCount} orders</span></div>
+    <div class="divider"></div>
+    <div class="row bold" style="font-size:12px"><span>TODAY'S TOTAL EXPENSE:</span><span>Rs ${totalTodayExpenses.toLocaleString()}</span></div>
+    <div class="row" style="font-size:10px"><span>(Operating + Petty Cash)</span></div>
+    <div class="divider"></div>
+    <div class="row bold" style="font-size:14px"><span>TODAY'S TOTAL PROFIT:</span><span>Rs ${todayProfit.toLocaleString()}</span></div>
+    <div class="row" style="font-size:10px"><span>Net Profit Margin:</span><span>${marginPct}%</span></div>
+  </div>
+
+  <div class="divider-solid"></div>
+  <div class="bold" style="font-size:12px;margin:4px 0">🚫 TODAY'S CANCELLED ORDERS & ITEMS</div>
+  <div class="row"><span>Cancelled Events:</span><span class="bold">${cancelledToday.length}</span></div>
+  <div class="row bold" style="color:#000"><span>TOTAL CANCELLED COST:</span><span>Rs ${todayCancelledCost.toLocaleString()}</span></div>
+  <div class="divider"></div>
+
+  <div style="margin:4px 0">
+    <div class="bold" style="font-size:10px;margin-bottom:4px">WRITTEN CANCELLED DETAILS:</div>
+    ${cancelledToday.length === 0 ? `<div style="font-size:11px;font-style:italic">No cancelled orders or items today.</div>` : `
+      ${cancelledToday.map((c, idx) => `
+        <div class="cancel-item">
+          <div class="bold">${idx+1}. ${c.time || ''} - ${c.orderType === 'Dine-in' ? 'Table ' + c.table : c.table} (${c.cancelType || 'Cancelled'})</div>
+          <div>Items: ${(c.items || []).map(i => `${i.qty}x ${i.name} (Rs ${i.price})`).join(', ')}</div>
+          <div class="bold">Cost: Rs ${(c.cost || 0).toLocaleString()} | Staff: ${c.waiter || 'Staff'}</div>
+        </div>
+      `).join('')}
+    `}
+  </div>
+
+  <div class="divider-solid"></div>
+
+  <div style="margin-top:15px">
+    <div class="row" style="margin-top:20px"><span>Admin Signature: ____________</span></div>
+    <div class="row" style="margin-top:20px"><span>Owner Signature: ____________</span></div>
+  </div>
+
+  <div class="divider"></div>
+  <div class="center bold" style="font-size:10px;margin-top:5px">Developer Contact: 03255775600</div>
+  <div class="center" style="font-size:9px;margin-top:2px">Dogar Sajji POS System &bull; Day Closeout</div>
+
+  </body></html>`;
+
+  const printerDevice = localStorage.getItem('hfc_printer_device') || '';
+  const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
+
+  if (window.api && window.api.printReceipt) {
+    toast('Printing Owner End Day Sales Receipt...', 'info');
+    window.api.printReceipt(receiptHtml, {
+      silent: silentPrint,
+      deviceName: printerDevice || undefined
+    }).then(res => {
+      toast('🌙 Owner End Day Sales Receipt Printed & Recorded as 1 Day! ✓', 'success');
+    }).catch(() => {
+      fallbackPrintWindow(receiptHtml, false);
+      toast('🌙 Owner End Day Sales Receipt Printed & Recorded as 1 Day! ✓', 'success');
+    });
+  } else {
+    fallbackPrintWindow(receiptHtml, false);
+    toast('🌙 Owner End Day Sales Receipt Printed & Recorded as 1 Day! ✓', 'success');
+  }
+
+  showSection('finance');
+}
+
 function renderFinanceOverview(){
   // ── Live computed stats from real salesLedger & expenseLedger ──
   const today = new Date().toISOString().split('T')[0];
@@ -4561,6 +4772,21 @@ function renderFinanceOverview(){
   const noSales = salesLedger.length===0;
 
   return `
+  <div class="card card-gold" style="margin-bottom:1.25rem;background:linear-gradient(135deg, rgba(201,168,76,0.12), rgba(16,185,129,0.08));border:1px solid var(--gold)">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.75rem">
+      <div>
+        <h3 style="margin:0;color:var(--gold);display:flex;align-items:center;gap:.5rem">
+          🌙 End Day Sales Closeout & Owner Receipt
+        </h3>
+        <div style="font-size:.82rem;color:var(--text2);margin-top:.25rem">
+          Calculates today's total sales, expenses, net profit, and itemized cancelled orders cost into 1 official Day Closeout Receipt for the Owner.
+        </div>
+      </div>
+      <button class="btn-primary" style="padding:.6rem 1.3rem;font-weight:700;background:var(--gold);color:var(--dark);border-color:var(--gold)" onclick="triggerEndDaySales()">
+        🌙 End Day Sales & Print Receipt
+      </button>
+    </div>
+  </div>
   <div class="stats-grid" style="margin-bottom:1.5rem">
     <div class="stat-card">
       <div class="num" style="${todaySales===0?'color:var(--text3)':''}">Rs ${todaySales.toLocaleString()}</div>
@@ -5379,6 +5605,7 @@ async function saveToLocal() {
         window.api.saveUnpaidBills(unpaidBills),
         window.api.saveAppUsers(appUsers),
         window.api.saveCancelledOrders ? window.api.saveCancelledOrders(cancelledOrders) : Promise.resolve(),
+        window.api.saveDailyCloseouts ? window.api.saveDailyCloseouts(dailyCloseouts) : Promise.resolve(),
         window.api.saveSettings({ nextPettyId, supabaseConfig: currentSupConfig }),
       ]);
       console.log('💾 Data saved to local SQLite database');
@@ -5387,7 +5614,7 @@ async function saveToLocal() {
     // 2. Central Backend REST API (Web Browser Profile A / Profile B / Mobile)
     await apiCall('save-all', 'POST', {
       inventory, employees, pettyCash, salesLedger, expenseLedger,
-      menuItems, menuCategories, deals, tables, orders, unpaidBills, appUsers, cancelledOrders,
+      menuItems, menuCategories, deals, tables, orders, unpaidBills, appUsers, cancelledOrders, dailyCloseouts,
       settings: { nextPettyId, supabaseConfig: currentSupConfig }
     });
 
@@ -5536,6 +5763,7 @@ async function saveToLocal() {
       localStorage.setItem('dogar_web_unpaid_bills', JSON.stringify(unpaidBills || {}));
       localStorage.setItem('dogar_web_app_users', JSON.stringify(appUsers || []));
       localStorage.setItem('dogar_web_cancelled_orders', JSON.stringify(cancelledOrders || []));
+      localStorage.setItem('dogar_web_daily_closeouts', JSON.stringify(dailyCloseouts || []));
       localStorage.setItem('dogar_web_next_petty_id', String(nextPettyId || 1));
     } catch(e) { console.warn('LocalStorage web fallback save:', e); }
   } catch(e) { console.warn('Database save warning:', e); }
@@ -5750,7 +5978,7 @@ async function loadFromLocal() {
       await migrateLocalStorageIfNeeded();
       const isDbEmpty = await window.api.isDbEmpty();
       if (!isDbEmpty) {
-        const [inv, emp, pc, sl, el, mi, mc, dl, tb, ord, ub, settings, usr, co] = await Promise.all([
+        const [inv, emp, pc, sl, el, mi, mc, dl, tb, ord, ub, settings, usr, co, dc] = await Promise.all([
           window.api.getInventory(),
           window.api.getEmployees(),
           window.api.getPettyCash(),
@@ -5764,7 +5992,8 @@ async function loadFromLocal() {
           window.api.getUnpaidBills(),
           window.api.getSettings(),
           window.api.getAppUsers(),
-          window.api.getCancelledOrders ? window.api.getCancelledOrders() : Promise.resolve([])
+          window.api.getCancelledOrders ? window.api.getCancelledOrders() : Promise.resolve([]),
+          window.api.getDailyCloseouts ? window.api.getDailyCloseouts() : Promise.resolve([])
         ]);
 
         if (Array.isArray(inv)) inventory      = inv;
@@ -5779,6 +6008,7 @@ async function loadFromLocal() {
         if (Array.isArray(ord)) orders         = ord;
         if (ub && typeof ub === 'object') unpaidBills = ub;
         if (Array.isArray(co))  cancelledOrders = co;
+        if (Array.isArray(dc))  dailyCloseouts = dc;
         if (Array.isArray(usr) && usr.length > 0) {
           appUsers = usr;
           const adminUser = appUsers.find(u => u.username.toLowerCase() === 'admin');
@@ -5812,6 +6042,7 @@ async function loadFromLocal() {
         if (Array.isArray(d.tables)) tables         = d.tables;
         if (Array.isArray(d.orders)) orders         = d.orders;
         if (Array.isArray(d.cancelledOrders)) cancelledOrders = d.cancelledOrders;
+        if (Array.isArray(d.dailyCloseouts)) dailyCloseouts = d.dailyCloseouts;
         if (Array.isArray(d.appUsers) && d.appUsers.length > 0) appUsers = d.appUsers;
         if (d.unpaidBills && typeof d.unpaidBills === 'object') unpaidBills = d.unpaidBills;
         if (d.settings && d.settings.nextPettyId != null) nextPettyId = d.settings.nextPettyId;
@@ -5840,6 +6071,7 @@ async function loadFromLocal() {
         const localSl  = localStorage.getItem('dogar_web_sales_ledger');
         const localEl  = localStorage.getItem('dogar_web_expense_ledger');
         const localCo  = localStorage.getItem('dogar_web_cancelled_orders');
+        const localDc  = localStorage.getItem('dogar_web_daily_closeouts');
         const localUsr = localStorage.getItem('dogar_web_app_users');
         const localPid = localStorage.getItem('dogar_web_next_petty_id');
 
@@ -5855,6 +6087,7 @@ async function loadFromLocal() {
         if (localSl)  salesLedger    = JSON.parse(localSl);
         if (localEl)  expenseLedger  = JSON.parse(localEl);
         if (localCo)  cancelledOrders = JSON.parse(localCo);
+        if (localDc)  dailyCloseouts = JSON.parse(localDc);
         if (localUsr) appUsers       = JSON.parse(localUsr);
         if (localPid) nextPettyId    = parseInt(localPid) || 1;
 

@@ -46,6 +46,9 @@ contextBridge.exposeInMainWorld('api', {
   getCancelledOrders: () => ipcRenderer.invoke('db:getCancelledOrders'),
   saveCancelledOrders: (c) => ipcRenderer.invoke('db:saveCancelledOrders', c),
 
+  getDailyCloseouts: () => ipcRenderer.invoke('db:getDailyCloseouts'),
+  saveDailyCloseouts: (c) => ipcRenderer.invoke('db:saveDailyCloseouts', c),
+
   isDbEmpty: () => ipcRenderer.invoke('db:isEmpty'),
   clearAllData: () => ipcRenderer.invoke('db:clearAllData'),
   migrateFromLocalStorage: (legacy) => ipcRenderer.invoke('db:migrateFromLocalStorage', legacy),

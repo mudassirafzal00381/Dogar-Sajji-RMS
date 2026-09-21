@@ -293,6 +293,20 @@ function createSchema() {
       waiter     TEXT DEFAULT '',
       cancelType TEXT DEFAULT 'Partial'
     );
+
+    CREATE TABLE IF NOT EXISTS daily_closeouts (
+      id                 TEXT PRIMARY KEY,
+      date               TEXT,
+      time               TEXT,
+      totalSales         REAL DEFAULT 0,
+      salesCount         INTEGER DEFAULT 0,
+      totalExpenses      REAL DEFAULT 0,
+      totalProfit        REAL DEFAULT 0,
+      totalCancelledCost REAL DEFAULT 0,
+      cancelledCount     INTEGER DEFAULT 0,
+      closedBy           TEXT DEFAULT '',
+      timestamp          INTEGER DEFAULT 0
+    );
   `);
 }
 
@@ -591,6 +605,23 @@ function saveCancelledOrders(cancelledOrders) {
   );
 }
 
+function getDailyCloseouts() {
+  return db.prepare('SELECT * FROM daily_closeouts ORDER BY timestamp DESC').all();
+}
+function saveDailyCloseouts(dailyCloseouts) {
+  replaceAll(
+    'daily_closeouts', dailyCloseouts,
+    `INSERT INTO daily_closeouts (id,date,time,totalSales,salesCount,totalExpenses,totalProfit,totalCancelledCost,cancelledCount,closedBy,timestamp)
+     VALUES (@id,@date,@time,@totalSales,@salesCount,@totalExpenses,@totalProfit,@totalCancelledCost,@cancelledCount,@closedBy,@timestamp)`,
+    d => ({
+      id: String(d.id), date: d.date || '', time: d.time || '', totalSales: d.totalSales || 0,
+      salesCount: d.salesCount || 0, totalExpenses: d.totalExpenses || 0, totalProfit: d.totalProfit || 0,
+      totalCancelledCost: d.totalCancelledCost || 0, cancelledCount: d.cancelledCount || 0,
+      closedBy: d.closedBy || '', timestamp: d.timestamp || Date.now()
+    })
+  );
+}
+
 function getAllData() {
   return {
     inventory: getInventory(),
@@ -607,6 +638,7 @@ function getAllData() {
     settings: getSettings(),
     appUsers: getAppUsers(),
     cancelledOrders: getCancelledOrders(),
+    dailyCloseouts: getDailyCloseouts(),
   };
 }
 
@@ -626,6 +658,7 @@ function saveAllData(data) {
   if (data.settings) saveSettings(data.settings);
   if (data.appUsers) saveAppUsers(data.appUsers);
   if (data.cancelledOrders) saveCancelledOrders(data.cancelledOrders);
+  if (data.dailyCloseouts) saveDailyCloseouts(data.dailyCloseouts);
 }
 
 
@@ -634,7 +667,7 @@ function isDbEmpty() {
   const tables = [
     'menu_items', 'menu_categories', 'tables', 'orders', 'unpaid_bills',
     'inventory', 'employees', 'petty_cash', 'sales_ledger', 'expense_ledger',
-    'roti_orders', 'settings', 'deals', 'cancelled_orders',
+    'roti_orders', 'settings', 'deals', 'cancelled_orders', 'daily_closeouts',
   ];
   for (const t of tables) {
     const { count } = db.prepare(`SELECT COUNT(*) AS count FROM ${t}`).get();
@@ -658,6 +691,7 @@ function migrateFromLocalStorage(legacy) {
     if (legacy.unpaidBills) saveUnpaidBills(legacy.unpaidBills);
     if (legacy.settings) saveSettings(legacy.settings);
     if (legacy.cancelledOrders) saveCancelledOrders(legacy.cancelledOrders);
+    if (legacy.dailyCloseouts) saveDailyCloseouts(legacy.dailyCloseouts);
   });
   tx(legacy);
   return true;
@@ -680,7 +714,7 @@ function clearAllData() {
   const tables = [
     'menu_items', 'menu_categories', 'tables', 'orders', 'unpaid_bills',
     'inventory', 'employees', 'petty_cash', 'sales_ledger', 'expense_ledger',
-    'roti_orders', 'settings', 'deals', 'cancelled_orders',
+    'roti_orders', 'settings', 'deals', 'cancelled_orders', 'daily_closeouts',
   ];
   const tx = db.transaction(() => {
     for (const t of tables) {
@@ -752,6 +786,7 @@ module.exports = {
   getSettings, saveSettings,
   getAppUsers, saveAppUsers,
   getCancelledOrders, saveCancelledOrders,
+  getDailyCloseouts, saveDailyCloseouts,
   getAllData, saveAllData,
   isDbEmpty,
   clearAllData,
