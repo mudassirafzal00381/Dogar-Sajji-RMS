@@ -2474,17 +2474,18 @@ function printKitchenCancellationTicket(order, cancelledItems, isFullCancellatio
   <meta charset="UTF-8">
   <title>Kitchen Cancellation - ${order.id}</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
     @page { size: 80mm portrait; margin: 0; }
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
-      font-family: 'Courier New', Courier, monospace;
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 12px;
-      font-weight: bold;
+      font-weight: 600;
       color: #000;
       background: #fff;
       width: 80mm;
       padding: 4mm 5mm 12mm 5mm;
-      -webkit-print-color-adjust: exact;
+      -webkit-font-smoothing: antialiased;
       print-color-adjust: exact;
     }
     .center { text-align: center; }
@@ -2798,16 +2799,18 @@ function printKitchenTicket(id){
   <meta charset="UTF-8">
   <title>Kitchen Ticket - ${o.id}</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
     @page { size: 80mm portrait; margin: 0; }
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
-      font-family: 'Courier New', Courier, monospace;
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 13px;
+      font-weight: 600;
       color: #000 !important;
       background: #fff;
       width: 80mm;
       padding: 4mm 4mm 8mm 4mm;
-      -webkit-print-color-adjust: exact;
+      -webkit-font-smoothing: antialiased;
       print-color-adjust: exact;
     }
     .center { text-align: center; }
@@ -3284,17 +3287,18 @@ function buildReceiptHtml(isCustomerInvoice = false) {
   <meta charset="UTF-8">
   <title>${docTitle}</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
     @page { size: 80mm portrait; margin: 0; }
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
-      font-family: 'Courier New', Courier, monospace;
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 12px;
-      font-weight: bold;
+      font-weight: 600;
       color: #000;
       background: #fff;
       width: 80mm;
       padding: 4mm 5mm 12mm 5mm;
-      -webkit-print-color-adjust: exact;
+      -webkit-font-smoothing: antialiased;
       print-color-adjust: exact;
     }
     .center { text-align: center; }
@@ -4623,89 +4627,92 @@ async function printEndDaySalesReport() {
   <meta charset="UTF-8">
   <title>End Day Sales Report - ${todayStr}</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
     @page { size: 80mm portrait; margin: 0; }
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
-      font-family: 'Courier New', Courier, monospace;
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 12px;
       color: #000 !important;
       background: #fff;
       width: 80mm;
       padding: 4mm 4mm 8mm 4mm;
-      -webkit-print-color-adjust: exact;
+      -webkit-font-smoothing: antialiased;
       print-color-adjust: exact;
     }
     .center { text-align: center; }
     .right { text-align: right; }
-    .bold { font-weight: bold; }
-    .divider { border-top: 1px dashed #000; margin: 5px 0; }
-    .divider-solid { border-top: 2px solid #000; margin: 5px 0; }
-    .row { display: flex; justify-content: space-between; margin: 3px 0; font-size: 12px; }
+    .bold { font-weight: 700; }
+    .heavy { font-weight: 900; }
+    .divider { border-top: 1px dashed #000; margin: 6px 0; }
+    .divider-solid { border-top: 2px solid #000; margin: 6px 0; }
+    .row { display: flex; justify-content: space-between; margin: 4px 0; font-size: 12px; }
     .big-box {
       border: 2px solid #000;
-      padding: 6px;
-      margin: 6px 0;
+      border-radius: 4px;
+      padding: 8px;
+      margin: 8px 0;
     }
-    .cancel-item { font-size:11px; margin: 3px 0; padding-left:4px; border-left:2px solid #000; }
+    .box-title {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid #000;
+      padding-bottom: 4px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
   </style>
   </head><body>
 
-  <div class="center bold" style="font-size:15px;letter-spacing:1px">DOGAR SAJJI</div>
-  <div class="center" style="font-size:10px">In Front of Govt Graduate College, Multan Road, Muzaffargarh</div>
-  <div class="center" style="font-size:10px">Ph: 0300-1863406 / 0343-4763406</div>
+  <div class="center heavy" style="font-size:16px;letter-spacing:1px;text-transform:uppercase">DOGAR SAJJI</div>
+  <div class="center" style="font-size:10px;font-weight:500;margin-top:2px">In Front of Govt Graduate College, Multan Road, Muzaffargarh</div>
+  <div class="center" style="font-size:10px;font-weight:600">Ph: 0300-1863406 / 0343-4763406</div>
   
   <div class="divider-solid"></div>
-  <div class="center bold" style="font-size:13px;letter-spacing:1px;margin:3px 0">*** END OF DAY SALES REPORT ***</div>
-  <div class="center bold" style="font-size:11px;margin-bottom:3px">[ RECEIPT GIVEN TO OWNER ]</div>
+  <div class="center heavy" style="font-size:13px;letter-spacing:1px;margin:3px 0">*** END OF DAY SALES REPORT ***</div>
+  <div class="center heavy" style="font-size:11px;margin-bottom:3px;letter-spacing:0.5px">[ RECEIPT GIVEN TO OWNER ]</div>
   <div class="divider"></div>
 
-  <div class="row"><span>Date:</span><span class="bold">${todayStr}</span></div>
-  <div class="row"><span>Time:</span><span>${nowStr}</span></div>
-  <div class="row"><span>Closed By:</span><span class="bold">${currentUser || 'Admin'}</span></div>
-  <div class="row"><span>Day Status:</span><span class="bold">1 DAY CALCULATED & CLOSED</span></div>
+  <div class="row"><span style="font-weight:500">Date:</span><span class="bold">${todayStr}</span></div>
+  <div class="row"><span style="font-weight:500">Time:</span><span class="bold">${nowStr}</span></div>
+  <div class="row"><span style="font-weight:500">Closed By:</span><span class="bold">${currentUser || 'Admin'}</span></div>
+  <div class="row"><span style="font-weight:500">Day Status:</span><span class="heavy" style="text-transform:uppercase">1 DAY CALCULATED & CLOSED</span></div>
 
   <div class="divider-solid"></div>
 
+  <!-- TODAY'S FINANCIAL SUMMARY -->
   <div class="big-box">
-    <div class="row bold" style="font-size:13px"><span>TODAY'S TOTAL SALES:</span><span>Rs ${todaySales.toLocaleString()}</span></div>
-    <div class="row" style="font-size:10px;margin-bottom:4px"><span>Total Orders Settled:</span><span>${todaySalesCount} orders</span></div>
+    <div class="box-title">📊 TODAY'S FINANCIAL SUMMARY</div>
+    <div class="row heavy" style="font-size:13px"><span>TODAY'S TOTAL SALES:</span><span>Rs ${todaySales.toLocaleString()}</span></div>
+    <div class="row" style="font-size:11px;margin-bottom:4px;font-weight:500"><span>Total Orders Settled:</span><span class="bold">${todaySalesCount} orders</span></div>
+    
     <div class="divider"></div>
-    <div class="row bold" style="font-size:12px"><span>TODAY'S TOTAL EXPENSE:</span><span>Rs ${totalTodayExpenses.toLocaleString()}</span></div>
-    <div class="row" style="font-size:10px"><span>(Operating + Petty Cash)</span></div>
+    <div class="row heavy" style="font-size:12px"><span>TODAY'S TOTAL EXPENSE:</span><span>Rs ${totalTodayExpenses.toLocaleString()}</span></div>
+    <div class="row" style="font-size:10px;font-weight:500"><span>(Operating + Petty Cash)</span></div>
+    
     <div class="divider"></div>
-    <div class="row bold" style="font-size:14px"><span>TODAY'S TOTAL PROFIT:</span><span>Rs ${todayProfit.toLocaleString()}</span></div>
-    <div class="row" style="font-size:10px"><span>Net Profit Margin:</span><span>${marginPct}%</span></div>
+    <div class="row heavy" style="font-size:14px"><span>TODAY'S TOTAL PROFIT:</span><span>Rs ${todayProfit.toLocaleString()}</span></div>
+    <div class="row" style="font-size:11px;font-weight:500"><span>Net Profit Margin:</span><span class="bold">${marginPct}%</span></div>
   </div>
 
-  <div class="divider-solid"></div>
-  <div class="bold" style="font-size:12px;margin:4px 0">🚫 TODAY'S CANCELLED ORDERS & ITEMS</div>
-  <div class="row"><span>Cancelled Events:</span><span class="bold">${cancelledToday.length}</span></div>
-  <div class="row bold" style="color:#000"><span>TOTAL CANCELLED COST:</span><span>Rs ${todayCancelledCost.toLocaleString()}</span></div>
-  <div class="divider"></div>
-
-  <div style="margin:4px 0">
-    <div class="bold" style="font-size:10px;margin-bottom:4px">WRITTEN CANCELLED DETAILS:</div>
-    ${cancelledToday.length === 0 ? `<div style="font-size:11px;font-style:italic">No cancelled orders or items today.</div>` : `
-      ${cancelledToday.map((c, idx) => `
-        <div class="cancel-item">
-          <div class="bold">${idx+1}. ${c.time || ''} - ${c.orderType === 'Dine-in' ? 'Table ' + c.table : c.table} (${c.cancelType || 'Cancelled'})</div>
-          <div>Items: ${(c.items || []).map(i => `${i.qty}x ${i.name} (Rs ${i.price})`).join(', ')}</div>
-          <div class="bold">Cost: Rs ${(c.cost || 0).toLocaleString()} | Staff: ${c.waiter || 'Staff'}</div>
-        </div>
-      `).join('')}
-    `}
+  <!-- CANCELLED ORDERS SUMMARY (Total count and total cost only) -->
+  <div class="big-box">
+    <div class="box-title">🚫 CANCELLED ORDERS SUMMARY</div>
+    <div class="row" style="font-size:12px"><span style="font-weight:500">Total Cancelled Orders:</span><span class="heavy">${cancelledToday.length}</span></div>
+    <div class="row heavy" style="font-size:13px;margin-top:4px"><span>Total Cancelled Cost:</span><span>Rs ${todayCancelledCost.toLocaleString()}</span></div>
   </div>
 
   <div class="divider-solid"></div>
 
-  <div style="margin-top:15px">
-    <div class="row" style="margin-top:20px"><span>Admin Signature: ____________</span></div>
-    <div class="row" style="margin-top:20px"><span>Owner Signature: ____________</span></div>
+  <div style="margin-top:18px">
+    <div class="row" style="margin-top:18px"><span style="font-weight:600">Admin Signature: ____________</span></div>
+    <div class="row" style="margin-top:18px"><span style="font-weight:600">Owner Signature: ____________</span></div>
   </div>
 
   <div class="divider"></div>
-  <div class="center bold" style="font-size:10px;margin-top:5px">Developer Contact: 03255775600</div>
-  <div class="center" style="font-size:9px;margin-top:2px">Dogar Sajji POS System &bull; Day Closeout</div>
+  <div class="center heavy" style="font-size:11px;margin-top:6px;letter-spacing:0.5px">Developer Contact: 03255775600</div>
+  <div class="center" style="font-size:9px;margin-top:2px;font-weight:500">Dogar Sajji POS System &bull; Day Closeout</div>
 
   </body></html>`;
 
