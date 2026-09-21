@@ -658,7 +658,7 @@ tr:hover td{background:rgba(201,168,76,.04)}
       </div>
     </div>
 
-    <form onsubmit="handleLoginForm(event)" class="login-form">
+    <form onsubmit="handleLoginForm(event); return false;" class="login-form">
       <div id="login-error-msg" class="login-error" style="display:none"></div>
 
       <div class="form-group">
@@ -671,7 +671,7 @@ tr:hover td{background:rgba(201,168,76,.04)}
         <input type="password" id="login-password" class="input-field" placeholder="Password (default: 1234)" required autocomplete="current-password" value="1234">
       </div>
 
-      <button type="submit" class="login-btn">
+      <button type="button" onclick="handleLoginForm(event)" class="login-btn">
         <span>Sign In to Terminal</span> ➔
       </button>
     </form>
@@ -987,81 +987,94 @@ function selectQuickUser(username) {
 }
 
 function handleLoginForm(e) {
-  if (e) e.preventDefault();
-  const usernameVal = document.getElementById('login-username')?.value.trim() || '';
-  const passwordVal = document.getElementById('login-password')?.value || '';
+  if (e && typeof e.preventDefault === 'function') e.preventDefault();
+  try {
+    const usernameVal = document.getElementById('login-username')?.value.trim() || '';
+    const passwordVal = document.getElementById('login-password')?.value || '';
 
-  if (!usernameVal) {
-    showLoginError('Please enter your username.');
-    return;
+    if (!usernameVal) {
+      showLoginError('Please enter your username.');
+      return false;
+    }
+
+    const defaultUsers = [
+      { username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin / Manager' },
+      { username: 'order1', password: '1234', role: 'Order Taker', name: 'Order Taker 1' },
+      { username: 'order2', password: '1234', role: 'Order Taker', name: 'Order Taker 2' }
+    ];
+
+    if (!Array.isArray(appUsers)) appUsers = defaultUsers;
+
+    let user = appUsers.find(u => u && String(u.username).toLowerCase() === usernameVal.toLowerCase());
+    if (!user) {
+      user = defaultUsers.find(u => u && String(u.username).toLowerCase() === usernameVal.toLowerCase());
+      if (user) appUsers.push({ ...user });
+    }
+
+    if (!user) {
+      showLoginError('Invalid username. Default accounts: admin, order1, order2.');
+      return false;
+    }
+
+    const expectedPwd = String(user.password != null && user.password !== '' ? user.password : '1234');
+    const isMatch = (passwordVal === expectedPwd) || (passwordVal === '1234' && ['admin','order1','order2'].includes(usernameVal.toLowerCase()));
+
+    if (!isMatch) {
+      showLoginError('Incorrect password/PIN. Default PIN is 1234.');
+      return false;
+    }
+
+    performUserSessionLogin(user);
+  } catch (err) {
+    console.error('Login error:', err);
+    showLoginError('Login error: ' + err.message);
   }
-
-  const defaultUsers = [
-    { username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin / Manager' },
-    { username: 'order1', password: '1234', role: 'Order Taker', name: 'Order Taker 1' },
-    { username: 'order2', password: '1234', role: 'Order Taker', name: 'Order Taker 2' }
-  ];
-
-  let user = appUsers.find(u => String(u.username).toLowerCase() === usernameVal.toLowerCase());
-  if (!user) {
-    user = defaultUsers.find(u => String(u.username).toLowerCase() === usernameVal.toLowerCase());
-    if (user) appUsers.push({ ...user });
-  }
-
-  if (!user) {
-    showLoginError('Invalid username. Default accounts: admin, order1, order2.');
-    return;
-  }
-
-  const expectedPwd = String(user.password != null && user.password !== '' ? user.password : '1234');
-  const isMatch = (passwordVal === expectedPwd) || (passwordVal === '1234' && ['admin','order1','order2'].includes(usernameVal.toLowerCase()));
-
-  if (!isMatch) {
-    showLoginError('Incorrect password/PIN. Default PIN is 1234.');
-    return;
-  }
-
-  performUserSessionLogin(user);
+  return false;
 }
 
 function performUserSessionLogin(user) {
-  currentUser = user.username;
-  currentRole = user.role || 'Admin';
+  try {
+    currentUser = user.username;
+    currentRole = user.role || 'Admin';
 
-  if (typeof ADMIN_CREDENTIALS !== 'undefined') {
-    ADMIN_CREDENTIALS.username = user.username;
-    ADMIN_CREDENTIALS.password = String(user.password || '1234');
+    if (typeof ADMIN_CREDENTIALS !== 'undefined') {
+      ADMIN_CREDENTIALS.username = user.username;
+      ADMIN_CREDENTIALS.password = String(user.password || '1234');
+    }
+
+    const userDisp = document.getElementById('user-display');
+    if (userDisp) userDisp.textContent = user.name || user.username;
+
+    const roleDisp = document.getElementById('role-display');
+    if (roleDisp) roleDisp.textContent = currentRole;
+
+    if (typeof buildNav === 'function') buildNav();
+
+    const loginScr = document.getElementById('login-screen');
+    if (loginScr) loginScr.style.display = 'none';
+
+    const appScr = document.getElementById('app');
+    if (appScr) appScr.style.display = 'flex';
+
+    const targetSec = (currentRole === 'Order Taker') ? 'orders' : 'dashboard';
+    if (typeof showSection === 'function') showSection(targetSec);
+
+    if (typeof migrateLocalStorageIfNeeded === 'function') {
+      migrateLocalStorageIfNeeded().catch(e => console.warn('Migration:', e));
+    }
+    if (typeof loadFromLocal === 'function') {
+      loadFromLocal().catch(e => console.warn('Load local error:', e));
+    }
+
+    if (typeof toast === 'function') toast(`Welcome ${user.name || user.username}!`, 'success');
+  } catch (err) {
+    console.error('Session login error:', err);
+    showLoginError('Error entering system: ' + err.message);
   }
-
-  const userDisp = document.getElementById('user-display');
-  if (userDisp) userDisp.textContent = user.name || user.username;
-
-  const roleDisp = document.getElementById('role-display');
-  if (roleDisp) roleDisp.textContent = currentRole;
-
-  if (typeof buildNav === 'function') buildNav();
-
-  const loginScr = document.getElementById('login-screen');
-  if (loginScr) loginScr.style.display = 'none';
-
-  const appScr = document.getElementById('app');
-  if (appScr) appScr.style.display = 'flex';
-
-  const targetSec = (currentRole === 'Order Taker') ? 'orders' : 'dashboard';
-  if (typeof showSection === 'function') showSection(targetSec);
-
-  if (typeof migrateLocalStorageIfNeeded === 'function') {
-    migrateLocalStorageIfNeeded().catch(e => console.warn('Migration:', e));
-  }
-  if (typeof loadFromLocal === 'function') {
-    loadFromLocal().catch(e => console.warn('Load local error:', e));
-  }
-
-  if (typeof toast === 'function') toast(`Welcome ${user.name || user.username}!`, 'success');
 }
 
 function quickLogin(accountType) {
-  const target = appUsers.find(u => String(u.username).toLowerCase() === String(accountType).toLowerCase()) || appUsers[0];
+  const target = (Array.isArray(appUsers) ? appUsers : []).find(u => u && String(u.username).toLowerCase() === String(accountType).toLowerCase()) || appUsers[0];
   performUserSessionLogin(target);
 }
 
@@ -1088,15 +1101,12 @@ function buildNav(){
   nav.innerHTML=allowed.map(t=>`<div class="nav-tab ${activeSection===t?'active':''}" data-section="${t}" onclick="showSection('${t}')">${TABS[t]||t}</div>`).join('');
 
   // Topbar visibility based on role
-  const isOrderTaker = (currentRole === 'Order Taker');
-  ['btn-cloud-sync','btn-printer-settings','btn-db-backup','btn-change-pwd'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = isOrderTaker ? 'none' : 'inline-flex';
-  });
+  const rolesBtn = document.getElementById('btn-change-pwd');
+  if (rolesBtn) rolesBtn.style.display = (currentRole === 'Admin') ? 'inline-flex' : 'none';
 
   const mobBar = document.getElementById('mobile-bottom-bar');
   if (mobBar) {
-    if (isOrderTaker) {
+    if (currentRole === 'Order Taker') {
       mobBar.innerHTML = `
         <div class="mobile-nav-item active" onclick="goToNewOrder(); updateMobileNav(this);"><span>🛍️</span>Order</div>
         <div class="mobile-nav-item" onclick="showSection('tables'); updateMobileNav(this);"><span>🪑</span>Tables & Bills</div>
@@ -1117,38 +1127,52 @@ function showSection(sec) {
 
 // ── RENDER ──
 function renderSection(sec){
-  switch(sec){
-    case 'dashboard': return renderDashboard();
-    case 'menu':      return renderMenu();
-    case 'orders':    return renderOrders();
-    case 'kitchen':   return renderKitchen();
-    case 'inventory': return renderInventory();
-    case 'employees': return renderEmployees();
-    case 'finance':   return renderFinance();
-    default: return '<p>Section not found.</p>';
+  try {
+    switch(sec){
+      case 'dashboard': return renderDashboard();
+      case 'menu':      return renderMenu();
+      case 'orders':    return renderOrders();
+      case 'kitchen':   return renderKitchen();
+      case 'inventory': return renderInventory();
+      case 'employees': return renderEmployees();
+      case 'finance':   return renderFinance();
+      default: return '<p>Section not found.</p>';
+    }
+  } catch (err) {
+    console.error('Error rendering section ' + sec, err);
+    return `<div style="padding:2rem;color:var(--red);text-align:center"><h3>⚠️ Error Loading Section (${sec})</h3><p style="color:var(--text2);font-size:.85rem">${err.message}</p></div>`;
   }
 }
 
 // Short label for an order regardless of type — "Table 3" for Dine-in,
 // "Takeaway"/"Delivery" otherwise (those have no table).
 function orderLabel(o){
-  const type=o.orderType||'Dine-in';
-  return type==='Dine-in'?'Table '+o.table:type;
+  const type= (o && o.orderType) || 'Dine-in';
+  return type==='Dine-in' ? ('Table ' + (o ? o.table : '')) : type;
 }
 
 // ── DASHBOARD ──
 function renderDashboard(){
-  const todayStr = new Date().toISOString().split('T')[0];
-  const yesterdayStr = new Date(Date.now()-86400000).toISOString().split('T')[0];
-  const totalSales = salesLedger.filter(s=>s.date===todayStr).reduce((a,s)=>a+s.total,0);
-  const yesterdaySales = salesLedger.filter(s=>s.date===yesterdayStr).reduce((a,s)=>a+s.total,0);
-  const salesTrend = yesterdaySales>0 ? Math.round((totalSales-yesterdaySales)/yesterdaySales*100) : null;
-  const ordersToday = orders.length + salesLedger.filter(s=>s.date===todayStr).length;
-  const pending = orders.filter(o=>o.status==='pending').length;
-  const occupied = tables.filter(t=>t.status==='occupied').length;
-  const lowStock = inventory.filter(i=>i.stock<i.min);
-  const cancelledToday = (cancelledOrders || []).filter(c => c.date === todayStr);
-  const lostRevenueToday = cancelledToday.reduce((a, c) => a + (c.cost || 0), 0);
+  try {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const yesterdayStr = new Date(Date.now()-86400000).toISOString().split('T')[0];
+    
+    const safeSales = Array.isArray(salesLedger) ? salesLedger : [];
+    const safeOrders = Array.isArray(orders) ? orders : [];
+    const safeTables = Array.isArray(tables) ? tables : [];
+    const safeInventory = Array.isArray(inventory) ? inventory : [];
+    const safeCancelled = Array.isArray(cancelledOrders) ? cancelledOrders : [];
+    const safeEmployees = Array.isArray(employees) ? employees : [];
+
+    const totalSales = safeSales.filter(s=>s && s.date===todayStr).reduce((a,s)=>a+(s.total||0),0);
+    const yesterdaySales = safeSales.filter(s=>s && s.date===yesterdayStr).reduce((a,s)=>a+(s.total||0),0);
+    const salesTrend = yesterdaySales>0 ? Math.round((totalSales-yesterdaySales)/yesterdaySales*100) : null;
+    const ordersToday = safeOrders.length + safeSales.filter(s=>s && s.date===todayStr).length;
+    const pending = safeOrders.filter(o=>o && o.status==='pending').length;
+    const occupied = safeTables.filter(t=>t && t.status==='occupied').length;
+    const lowStock = safeInventory.filter(i=>i && i.stock<i.min);
+    const cancelledToday = safeCancelled.filter(c => c && c.date === todayStr);
+    const lostRevenueToday = cancelledToday.reduce((a, c) => a + (c.cost || 0), 0);
 
   return `
   <div class="section-header">
@@ -1245,7 +1269,10 @@ function renderDashboard(){
       </div>
     `}
   </div>`;
-}
+  } catch (err) {
+    console.error('renderDashboard error:', err);
+    return `<div style="padding:2rem;color:var(--red);text-align:center"><h3>⚠️ Error Loading Dashboard</h3><p style="color:var(--text2);font-size:.85rem">${err.message}</p></div>`;
+  }
 }
 
 // ── MENU ──
