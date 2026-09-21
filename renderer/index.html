@@ -2081,13 +2081,291 @@ function renderManager(){
           <div style="font-size:.75rem;color:var(--text3);margin-top:.4rem">⏱ ${o.time} · Staff: ${o.waiter || 'Counter'}</div>
         </div>
         <div class="order-footer">
-          ${o.status === 'pending' ? `<button class="btn-sm btn-green" onclick="updateOrder('${o.id}','confirmed')">✓ Accept</button><button class="btn-sm btn-red" onclick="updateOrder('${o.id}','rejected')">✗ Reject</button>` : `<button class="btn-sm btn-green" style="font-weight:700" onclick="payOrder('${o.id}')">⚡ Pay & Bill</button>`}
+          ${o.status === 'pending'
+            ? `<button class="btn-sm btn-green" onclick="updateOrder('${o.id}','confirmed')">✓ Accept</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">✗ Reject</button>`
+            : `<button class="btn-sm btn-green" style="font-weight:700" onclick="payOrder('${o.id}')">⚡ Pay & Bill</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">✗ Cancel Item/Order</button>`
+          }
           <button class="btn-sm btn-blue" onclick="editOrder('${o.id}')">Edit</button>
         </div>
       </div>`;
     }).join('')}
   </div>`}
   `;
+}
+
+function openRejectOrderModal(id) {
+  const o = orders.find(x => x.id === id);
+  if (!o) return;
+
+  const type = o.orderType || 'Dine-in';
+  const label = orderLabel(o);
+
+  const itemsHtml = o.items.map((i, idx) => `
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:.65rem .75rem; background:var(--surface2); border:1px solid var(--border); border-radius:8px; margin-bottom:.5rem">
+      <div style="display:flex; align-items:center; gap:.6rem; flex:1">
+        <input type="checkbox" id="reject-item-check-${idx}" class="reject-item-checkbox" data-index="${idx}" style="width:18px; height:18px; cursor:pointer" onchange="toggleRejectQtyDisabled(${idx})">
+        <div>
+          <div style="font-weight:700; font-size:.92rem; color:var(--text1)">${i.name}</div>
+          <div style="font-size:.78rem; color:var(--text2)">Ordered Qty: ${i.qty} · Rs ${(i.qty * i.price).toLocaleString()}</div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:.4rem">
+        <span style="font-size:.78rem; color:var(--text2); font-weight:600">Cancel Qty:</span>
+        <input type="number" id="reject-item-qty-${idx}" value="${i.qty}" min="1" max="${i.qty}" style="width:65px; padding:.3rem; text-align:center; font-weight:700; color:var(--red)" class="input-field" disabled>
+      </div>
+    </div>
+  `).join('');
+
+  showModal(`
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
+      <div>
+        <h3 style="margin:0; font-size:1.15rem; color:var(--red)">✂️ Reject / Cancel Order Items</h3>
+        <div style="font-size:.82rem; color:var(--text2); margin-top:.15rem">${label} (${type}) · Order #${o.id}</div>
+      </div>
+      <button class="btn-outline" style="padding:.25rem .6rem; font-size:.8rem" onclick="closeModal()">✕</button>
+    </div>
+
+    <div style="margin-bottom:.75rem; font-size:.82rem; color:var(--text2)">
+      Select the specific item(s) to cancel, or cancel the entire order:
+    </div>
+
+    <div style="max-height:260px; overflow-y:auto; padding-right:.2rem; margin-bottom:1rem">
+      ${itemsHtml}
+    </div>
+
+    <div style="display:flex; gap:.5rem; flex-wrap:wrap; justify-content:flex-end">
+      <button class="btn-outline" onclick="closeModal()">Back</button>
+      <button class="btn-primary" style="background:#dc2626; border-color:#dc2626; font-weight:700" onclick="submitPartialOrderCancellation('${o.id}')">✂️ Cancel Selected Items</button>
+      <button class="btn-primary" style="background:#7f1d1d; border-color:#7f1d1d; font-weight:700" onclick="submitFullOrderCancellation('${o.id}')">💣 Cancel ENTIRE Order</button>
+    </div>
+  `);
+}
+
+function toggleRejectQtyDisabled(idx) {
+  const chk = document.getElementById(`reject-item-check-${idx}`);
+  const input = document.getElementById(`reject-item-qty-${idx}`);
+  if (chk && input) {
+    input.disabled = !chk.checked;
+  }
+}
+
+async function submitPartialOrderCancellation(orderId) {
+  const o = orders.find(x => x.id === orderId);
+  if (!o) return;
+
+  const checkboxes = document.querySelectorAll('.reject-item-checkbox');
+  const selectedToCancel = [];
+
+  checkboxes.forEach(chk => {
+    if (chk.checked) {
+      const idx = parseInt(chk.dataset.index, 10);
+      const qtyInput = document.getElementById(`reject-item-qty-${idx}`);
+      const cancelQty = parseInt(qtyInput?.value, 10) || 1;
+      const targetItem = o.items[idx];
+      if (targetItem) {
+        selectedToCancel.push({
+          idx,
+          item: targetItem,
+          cancelQty: Math.min(cancelQty, targetItem.qty)
+        });
+      }
+    }
+  });
+
+  if (selectedToCancel.length === 0) {
+    toast('Please select at least one item to cancel', 'error');
+    return;
+  }
+
+  // Check if selection cancels all items completely
+  let isEntireOrder = true;
+  o.items.forEach((item, idx) => {
+    const sel = selectedToCancel.find(s => s.idx === idx);
+    if (!sel || sel.cancelQty < item.qty) {
+      isEntireOrder = false;
+    }
+  });
+
+  if (isEntireOrder) {
+    await submitFullOrderCancellation(orderId);
+    return;
+  }
+
+  // Perform partial cancellation
+  const cancelledTicketItems = [];
+  const updatedItems = [];
+
+  o.items.forEach((item, idx) => {
+    const sel = selectedToCancel.find(s => s.idx === idx);
+    if (sel) {
+      cancelledTicketItems.push({
+        name: item.name,
+        qty: sel.cancelQty,
+        desc: item.desc || ''
+      });
+      const remainingQty = item.qty - sel.cancelQty;
+      if (remainingQty > 0) {
+        updatedItems.push({ ...item, qty: remainingQty });
+      }
+    } else {
+      updatedItems.push({ ...item });
+    }
+  });
+
+  o.items = updatedItems;
+  o.total = o.items.reduce((sum, i) => sum + i.qty * i.price, 0);
+
+  if (API_CONNECTED) {
+    await apiPut('/api/orders/' + orderId, { items: o.items, total: o.total }).catch(() => {});
+  }
+
+  const type = o.orderType || 'Dine-in';
+  const billKey = type === 'Dine-in' ? o.table : o.id;
+  if (billKey != null && unpaidBills[billKey]) {
+    unpaidBills[billKey].items = o.items;
+  }
+
+  if (supabaseClient) {
+    try {
+      await supabaseClient.from('orders').update({ items: JSON.stringify(o.items), total: o.total }).eq('id', String(orderId));
+      if (billKey != null && unpaidBills[billKey]) {
+        await supabaseClient.from('unpaid_bills').update({ items: JSON.stringify(o.items) }).eq('bill_key', String(billKey));
+      }
+    } catch(e) {}
+  }
+
+  await saveToLocal();
+  closeModal();
+
+  // Print Kitchen Cancellation Ticket
+  printKitchenCancellationTicket(o, cancelledTicketItems, false);
+
+  showSection('orders');
+  toast(`Cancelled ${cancelledTicketItems.length} item(s) & Kitchen Ticket printed ✓`);
+}
+
+async function submitFullOrderCancellation(orderId) {
+  const o = orders.find(x => x.id === orderId);
+  if (!o) return;
+
+  const cancelledTicketItems = o.items.map(i => ({ name: i.name, qty: i.qty, desc: i.desc || '' }));
+
+  // Print Kitchen Cancellation Ticket BEFORE removing order
+  printKitchenCancellationTicket(o, cancelledTicketItems, true);
+
+  orders = orders.filter(x => x.id !== orderId);
+  const type = o.orderType || 'Dine-in';
+  const billKey = type === 'Dine-in' ? o.table : o.id;
+
+  if (billKey != null && unpaidBills[billKey]) {
+    const stillActive = orders.some(x => (type === 'Dine-in' ? x.table === billKey : x.id === billKey));
+    if (!stillActive) delete unpaidBills[billKey];
+  }
+  if (type === 'Dine-in' && !orders.some(x => x.table === o.table)) {
+    const t = tables.find(t => t.id === o.table);
+    if (t) { t.status = 'available'; t.persons = 0; }
+  }
+
+  if (API_CONNECTED) {
+    await apiDelete('/api/orders/' + orderId).catch(() => {});
+    if (billKey != null && !unpaidBills[billKey]) {
+      await apiCall('unpaid-bills/' + billKey, 'DELETE').catch(() => {});
+    }
+  }
+
+  if (supabaseClient) {
+    try {
+      await supabaseClient.from('orders').delete().eq('id', String(orderId));
+      if (billKey != null && !unpaidBills[billKey]) {
+        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey));
+      }
+    } catch(e) {}
+  }
+
+  await saveToLocal();
+  closeModal();
+  showSection('orders');
+  toast(`Order ${orderLabel(o)} cancelled & Kitchen Ticket printed ✓`);
+}
+
+function printKitchenCancellationTicket(order, cancelledItems, isFullCancellation = false) {
+  const now = new Date().toLocaleString('en-PK');
+  const type = order.orderType || 'Dine-in';
+  const headerTitle = type === 'Dine-in' ? `TABLE ${order.table}` : type.toUpperCase();
+
+  const htmlContent = `<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
+  <title>Kitchen Cancellation - ${order.id}</title>
+  <style>
+    @page { size: 80mm portrait; margin: 0; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      font-weight: bold;
+      color: #000;
+      background: #fff;
+      width: 80mm;
+      padding: 4mm 5mm 12mm 5mm;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .center { text-align: center; }
+    .bold { font-weight: bold; }
+    .divider { border-top: 1px dashed #000; margin: 5px 0; }
+    .divider-solid { border-top: 2px solid #000; margin: 5px 0; }
+    .status-box {
+      border: 3px double #000;
+      text-align: center;
+      padding: 6px;
+      font-size: 15px;
+      font-weight: 900;
+      margin: 6px 0;
+      letter-spacing: 1px;
+    }
+    .item-row { display:flex; align-items:baseline; gap:6px; margin: 5px 0; font-size:14px; font-weight:bold; }
+    .item-qty { font-size:16px; font-weight:900; min-width:28px; }
+    @media print { button { display:none; } }
+  </style>
+  </head><body>
+
+  <div class="center bold" style="font-size:11px;letter-spacing:3px;border-bottom:2px solid #000;padding-bottom:4px;margin-bottom:4px">Dogar Sajji</div>
+  <div class="center bold" style="font-size:13px;margin-bottom:2px;letter-spacing:1px">⚠️ KITCHEN CANCELLATION ⚠️</div>
+  <div class="center" style="font-size:10px;color:#000">${now}</div>
+
+  <div class="divider-solid"></div>
+
+  <div class="center bold" style="font-size:22px;letter-spacing:2px;margin:4px 0">${headerTitle}</div>
+  <div class="center" style="font-size:11px;margin-bottom:4px">Order: ${order.id} &nbsp;&bull;&nbsp; Staff: ${order.waiter || currentUser}</div>
+
+  <div class="status-box">${isFullCancellation ? '❌ COMPLETE ORDER CANCELLED' : '✂️ ITEM(S) CANCELLED'}</div>
+  <div class="divider"></div>
+
+  ${cancelledItems.map(i => `
+    <div class="item-row">
+      <span class="item-qty">CANCEL ${i.qty}×</span>
+      <span>${i.name}</span>
+    </div>
+    ${i.desc ? `<div style="font-size:11px;font-weight:normal;padding-left:34px;margin-bottom:4px">↳ ${i.desc}</div>` : ''}
+  `).join('')}
+
+  <div class="divider-solid" style="margin-top:8px"></div>
+  <div class="center" style="font-size:10px;margin-top:4px">— End of Cancellation Ticket —</div>
+  </body></html>`;
+
+  const printerDevice = localStorage.getItem('dogar_kitchen_printer') || localStorage.getItem('hfc_printer_device') || '';
+  const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
+
+  if (window.api && window.api.printReceipt) {
+    window.api.printReceipt(htmlContent, {
+      silent: silentPrint,
+      deviceName: printerDevice || undefined
+    }).catch(() => {
+      fallbackPrintWindow(htmlContent, false);
+    });
+  } else {
+    fallbackPrintWindow(htmlContent, false);
+  }
 }
 
 async function updateOrder(id, status) {
@@ -2097,6 +2375,9 @@ async function updateOrder(id, status) {
     await apiPut('/api/orders/' + id, { status }).catch(() => {});
   }
   if (status === 'rejected') {
+    openRejectOrderModal(id);
+    return;
+  }
     // Rejected orders are dropped entirely rather than kept with a status
     // flag — nothing else in the app filters on 'rejected', so leaving them
     // in `orders` let them silently reappear as billable/payable, which is
