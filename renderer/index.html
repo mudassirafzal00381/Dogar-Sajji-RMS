@@ -2082,8 +2082,8 @@ function renderManager(){
         </div>
         <div class="order-footer">
           ${o.status === 'pending'
-            ? `<button class="btn-sm btn-green" onclick="updateOrder('${o.id}','confirmed')">✓ Accept</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">✗ Reject</button>`
-            : `<button class="btn-sm btn-green" style="font-weight:700" onclick="payOrder('${o.id}')">⚡ Pay & Bill</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">✗ Cancel Item/Order</button>`
+            ? `<button class="btn-sm btn-green" onclick="updateOrder('${o.id}','confirmed')">✓ Accept</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">Cancel Order</button>`
+            : `<button class="btn-sm btn-green" style="font-weight:700" onclick="payOrder('${o.id}')">⚡ Pay & Bill</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">Cancel Order</button>`
           }
           <button class="btn-sm btn-blue" onclick="editOrder('${o.id}')">Edit</button>
         </div>
@@ -2109,9 +2109,11 @@ function openRejectOrderModal(id) {
           <div style="font-size:.78rem; color:var(--text2)">Ordered Qty: ${i.qty} · Rs ${(i.qty * i.price).toLocaleString()}</div>
         </div>
       </div>
-      <div style="display:flex; align-items:center; gap:.4rem">
-        <span style="font-size:.78rem; color:var(--text2); font-weight:600">Cancel Qty:</span>
-        <input type="number" id="reject-item-qty-${idx}" value="${i.qty}" min="1" max="${i.qty}" style="width:65px; padding:.3rem; text-align:center; font-weight:700; color:var(--red)" class="input-field" disabled>
+      <div style="display:flex; align-items:center; gap:.25rem">
+        <span style="font-size:.78rem; color:var(--text2); font-weight:600; margin-right:.2rem">Cancel Qty:</span>
+        <button type="button" class="btn-xs" style="background:var(--surface); border:1px solid var(--border); color:var(--text1); width:28px; height:28px; font-weight:900; font-size:1rem; border-radius:4px; cursor:pointer" onclick="adjustCancelQty(${idx}, -1, ${i.qty})">−</button>
+        <input type="number" id="reject-item-qty-${idx}" value="${i.qty}" min="1" max="${i.qty}" style="width:55px; height:28px; padding:.2rem; text-align:center; font-weight:700; color:var(--red)" class="input-field" disabled onchange="document.getElementById('reject-item-check-${idx}').checked = true; this.disabled = false;">
+        <button type="button" class="btn-xs" style="background:var(--surface); border:1px solid var(--border); color:var(--text1); width:28px; height:28px; font-weight:900; font-size:1rem; border-radius:4px; cursor:pointer" onclick="adjustCancelQty(${idx}, 1, ${i.qty})">+</button>
       </div>
     </div>
   `).join('');
@@ -2119,14 +2121,14 @@ function openRejectOrderModal(id) {
   showModal(`
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
       <div>
-        <h3 style="margin:0; font-size:1.15rem; color:var(--red)">✂️ Reject / Cancel Order Items</h3>
+        <h3 style="margin:0; font-size:1.15rem; color:var(--red)">🚫 Cancel Order / Less Quantity</h3>
         <div style="font-size:.82rem; color:var(--text2); margin-top:.15rem">${label} (${type}) · Order #${o.id}</div>
       </div>
       <button class="btn-outline" style="padding:.25rem .6rem; font-size:.8rem" onclick="closeModal()">✕</button>
     </div>
 
     <div style="margin-bottom:.75rem; font-size:.82rem; color:var(--text2)">
-      Select the specific item(s) to cancel, or cancel the entire order:
+      Check item(s) and use <strong>+</strong> / <strong>−</strong> to reduce/cancel quantity, or cancel the entire order:
     </div>
 
     <div style="max-height:260px; overflow-y:auto; padding-right:.2rem; margin-bottom:1rem">
@@ -2135,10 +2137,22 @@ function openRejectOrderModal(id) {
 
     <div style="display:flex; gap:.5rem; flex-wrap:wrap; justify-content:flex-end">
       <button class="btn-outline" onclick="closeModal()">Back</button>
-      <button class="btn-primary" style="background:#dc2626; border-color:#dc2626; font-weight:700" onclick="submitPartialOrderCancellation('${o.id}')">✂️ Cancel Selected Items</button>
+      <button class="btn-primary" style="background:#dc2626; border-color:#dc2626; font-weight:700" onclick="submitPartialOrderCancellation('${o.id}')">✂️ Cancel / Less Selected Qty</button>
       <button class="btn-primary" style="background:#7f1d1d; border-color:#7f1d1d; font-weight:700" onclick="submitFullOrderCancellation('${o.id}')">💣 Cancel ENTIRE Order</button>
     </div>
   `);
+}
+
+function adjustCancelQty(idx, delta, maxQty) {
+  const chk = document.getElementById(`reject-item-check-${idx}`);
+  const input = document.getElementById(`reject-item-qty-${idx}`);
+  if (chk && input) {
+    chk.checked = true;
+    input.disabled = false;
+    let cur = parseInt(input.value, 10) || 1;
+    cur = Math.max(1, Math.min(maxQty, cur + delta));
+    input.value = cur;
+  }
 }
 
 function toggleRejectQtyDisabled(idx) {
