@@ -4458,6 +4458,68 @@ function switchFinanceTab(tab){
   showSection('finance');
 }
 
+function renderCancelledOrdersView() {
+  const safeCancelled = Array.isArray(cancelledOrders) ? cancelledOrders : [];
+  const totalLost = safeCancelled.reduce((sum, c) => sum + (c ? (c.cost || 0) : 0), 0);
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayLost = safeCancelled.filter(c => c && c.date === todayStr).reduce((sum, c) => sum + (c ? (c.cost || 0) : 0), 0);
+
+  return `
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem;margin-bottom:1.25rem">
+    <div class="petty-summary-card">
+      <div class="ps-num" style="color:var(--red)">Rs ${todayLost.toLocaleString()}</div>
+      <div class="ps-lbl">Today's Cancelled Lost Revenue</div>
+    </div>
+    <div class="petty-summary-card">
+      <div class="ps-num" style="color:var(--amber)">Rs ${totalLost.toLocaleString()}</div>
+      <div class="ps-lbl">All-Time Cancelled Lost Revenue</div>
+    </div>
+    <div class="petty-summary-card">
+      <div class="ps-num" style="color:var(--gold)">${safeCancelled.length}</div>
+      <div class="ps-lbl">Total Cancellation Events</div>
+    </div>
+  </div>
+
+  <div class="card card-gold" style="padding:0;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--border)">
+      <h3 style="margin:0">🚫 Cancelled Orders & Items History</h3>
+      <button class="print-btn" onclick="exportCancelledOrdersCSV()">📊 Export Cancelled CSV</button>
+    </div>
+    ${safeCancelled.length === 0 ? `
+      <p style="color:var(--text3);text-align:center;padding:2.5rem;font-size:.88rem">No cancelled orders recorded yet.</p>
+    ` : `
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem;text-align:left">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);color:var(--text2);background:var(--surface2)">
+              <th style="padding:.6rem 1rem">Date & Time</th>
+              <th style="padding:.6rem 1rem">Order ID</th>
+              <th style="padding:.6rem 1rem">Table / Type</th>
+              <th style="padding:.6rem 1rem">Cancelled Item(s)</th>
+              <th style="padding:.6rem 1rem">Cost (Rs)</th>
+              <th style="padding:.6rem 1rem">Type</th>
+              <th style="padding:.6rem 1rem">Staff / Waiter</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${safeCancelled.map(c => `
+              <tr style="border-bottom:1px solid var(--border)">
+                <td style="padding:.6rem 1rem;color:var(--text2)">${c.date || ''} <span style="font-size:.75rem;color:var(--text3)">${c.time || ''}</span></td>
+                <td style="padding:.6rem 1rem;color:var(--blue)">${c.orderId || c.id || ''}</td>
+                <td style="padding:.6rem 1rem"><strong style="color:var(--gold)">${c.orderType === 'Dine-in' ? 'Table ' + c.table : (c.table || c.orderType || 'Order')}</strong></td>
+                <td style="padding:.6rem 1rem">${(c.items || []).map(i => `${i.qty}× ${i.name} (Rs ${i.price})`).join('<br>')}</td>
+                <td style="padding:.6rem 1rem"><strong style="color:var(--red)">Rs ${(c.cost || 0).toLocaleString()}</strong></td>
+                <td style="padding:.6rem 1rem"><span class="status-badge status-${c.cancelType === 'Full' ? 'rejected' : 'pending'}">${c.cancelType || 'Cancelled'}</span></td>
+                <td style="padding:.6rem 1rem;color:var(--text2)">${c.waiter || 'Staff'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `}
+  </div>`;
+}
+
 function renderFinanceOverview(){
   // ── Live computed stats from real salesLedger & expenseLedger ──
   const today = new Date().toISOString().split('T')[0];
