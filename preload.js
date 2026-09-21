@@ -43,6 +43,9 @@ contextBridge.exposeInMainWorld('api', {
   getAppUsers: () => ipcRenderer.invoke('db:getAppUsers'),
   saveAppUsers: (users) => ipcRenderer.invoke('db:saveAppUsers', users),
 
+  getCancelledOrders: () => ipcRenderer.invoke('db:getCancelledOrders'),
+  saveCancelledOrders: (c) => ipcRenderer.invoke('db:saveCancelledOrders', c),
+
   isDbEmpty: () => ipcRenderer.invoke('db:isEmpty'),
   clearAllData: () => ipcRenderer.invoke('db:clearAllData'),
   migrateFromLocalStorage: (legacy) => ipcRenderer.invoke('db:migrateFromLocalStorage', legacy),

@@ -831,6 +831,7 @@ const TABS = {
 
 // State
 let orders = [];
+let cancelledOrders = [];
 let tables = [];
 let menuCategories = [
   "Sajji With Rice (چاول کے ساتھ)",
@@ -1100,6 +1101,9 @@ function renderDashboard(){
   const pending = orders.filter(o=>o.status==='pending').length;
   const occupied = tables.filter(t=>t.status==='occupied').length;
   const lowStock = inventory.filter(i=>i.stock<i.min);
+  const cancelledToday = (cancelledOrders || []).filter(c => c.date === todayStr);
+  const lostRevenueToday = cancelledToday.reduce((a, c) => a + (c.cost || 0), 0);
+
   return `
   <div class="section-header">
     <div><div class="section-title">Dashboard</div><div class="section-sub">Live overview · ${new Date().toLocaleDateString('en-PK',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div></div>
@@ -1110,18 +1114,13 @@ function renderDashboard(){
     <div class="stat-card"><div class="num">${ordersToday}</div><div class="lbl">Orders Today</div><div class="sub">${orders.length} active now</div></div>
     <div class="stat-card"><div class="num" style="color:var(--red)">${pending}</div><div class="lbl">Pending Orders</div><div class="sub">Action needed</div></div>
     <div class="stat-card"><div class="num">${occupied}/${tables.length}</div><div class="lbl">Tables Occupied</div><div class="sub">${tables.filter(t=>t.status==='reserved').length} reserved</div></div>
+    <div class="stat-card"><div class="num" style="color:${cancelledToday.length?'var(--red)':'var(--text2)'}">${cancelledToday.length}</div><div class="lbl">Today's Cancelled</div><div class="sub" style="color:var(--red)">Rs ${lostRevenueToday.toLocaleString()} lost</div></div>
     <div class="stat-card"><div class="num" style="color:${lowStock.length?'var(--red)':'var(--green)'}">${lowStock.length}</div><div class="lbl">Low Stock Alerts</div><div class="sub">${lowStock.length?lowStock.slice(0,2).map(i=>i.item).join(', '):'All stocked'}</div></div>
-    <div class="stat-card"><div class="num">${employees.filter(e=>e.status==='Present').length}</div><div class="lbl">Staff Present</div><div class="sub">${employees.length} total today</div></div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
     <div class="card card-gold">
       <h3>📋 Recent Orders</h3>
       ${(() => {
-        // Active orders (unbilled) are shown first — they need attention.
-        // Once a bill is printed the order is completed and removed from
-        // `orders`, so pad the rest of the list with the most recent
-        // completed sales — otherwise this card goes empty the moment
-        // every table is settled, which reads as broken.
         const active = orders.slice(0,5).map(o=>({
           label: orderLabel(o),
           itemSummary: (o.items||[]).map(i=>`${i.qty}× ${i.name}`).join(', '),
@@ -1162,7 +1161,45 @@ function renderDashboard(){
           <span style="color:var(--green)">${i.stock} ${i.unit}</span>
         </div>`).join('')}
     </div>
+  </div>
+  
+  <div class="card card-gold" style="margin-top:1rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+      <h3 style="margin:0">🚫 Today's Cancelled Orders & Items</h3>
+      <span style="font-weight:700;color:var(--red);font-size:.85rem">Total Lost Today: Rs ${lostRevenueToday.toLocaleString()}</span>
+    </div>
+    ${cancelledToday.length === 0 ? `
+      <p style="color:var(--text3);font-size:.85rem;text-align:center;padding:1rem 0">No cancelled orders or items today.</p>
+    ` : `
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem;text-align:left">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);color:var(--text2)">
+              <th style="padding:.4rem">Time</th>
+              <th style="padding:.4rem">Table / Type</th>
+              <th style="padding:.4rem">Cancelled Item(s)</th>
+              <th style="padding:.4rem">Cost (Rs)</th>
+              <th style="padding:.4rem">Cancel Type</th>
+              <th style="padding:.4rem">Staff</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${cancelledToday.map(c => `
+              <tr style="border-bottom:1px solid var(--border)">
+                <td style="padding:.4rem;color:var(--text2)">${c.time || ''}</td>
+                <td style="padding:.4rem"><strong style="color:var(--gold)">${c.orderType === 'Dine-in' ? 'Table ' + c.table : c.table}</strong></td>
+                <td style="padding:.4rem">${(c.items || []).map(i => `${i.qty}× ${i.name} (Rs ${i.price})`).join(', ')}</td>
+                <td style="padding:.4rem"><strong style="color:var(--red)">Rs ${(c.cost || 0).toLocaleString()}</strong></td>
+                <td style="padding:.4rem"><span class="status-badge status-${c.cancelType === 'Full' ? 'rejected' : 'pending'}">${c.cancelType || 'Cancelled'}</span></td>
+                <td style="padding:.4rem;color:var(--text2)">${c.waiter || 'Staff'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `}
   </div>`;
+}
 }
 
 // ── MENU ──
@@ -2229,6 +2266,32 @@ async function submitPartialOrderCancellation(orderId) {
   o.items = updatedItems;
   o.total = o.items.reduce((sum, i) => sum + i.qty * i.price, 0);
 
+  // Record in cancelledOrders array
+  const cancelDate = new Date().toISOString().split('T')[0];
+  const cancelTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const recordedItems = selectedToCancel.map(s => ({
+    name: s.item.name,
+    qty: s.cancelQty,
+    price: s.item.price || 0,
+    cost: (s.item.price || 0) * s.cancelQty,
+    desc: s.item.desc || ''
+  }));
+  const totalCost = recordedItems.reduce((sum, i) => sum + i.cost, 0);
+
+  const cancelEntry = {
+    id: 'CAN' + Date.now() + Math.floor(Math.random() * 100),
+    date: cancelDate,
+    time: cancelTime,
+    orderId: o.id,
+    table: o.table || (o.orderType || 'Dine-in'),
+    orderType: o.orderType || 'Dine-in',
+    items: recordedItems,
+    cost: totalCost,
+    waiter: o.waiter || (typeof currentUser !== 'undefined' ? currentUser?.name : 'Staff'),
+    cancelType: 'Partial'
+  };
+  cancelledOrders.unshift(cancelEntry);
+
   if (API_CONNECTED) {
     await apiPut('/api/orders/' + orderId, { items: o.items, total: o.total }).catch(() => {});
   }
@@ -2263,6 +2326,32 @@ async function submitFullOrderCancellation(orderId) {
   if (!o) return;
 
   const cancelledTicketItems = o.items.map(i => ({ name: i.name, qty: i.qty, desc: i.desc || '' }));
+
+  // Record in cancelledOrders array
+  const cancelDate = new Date().toISOString().split('T')[0];
+  const cancelTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const recordedItems = (o.items || []).map(i => ({
+    name: i.name,
+    qty: i.qty,
+    price: i.price || 0,
+    cost: (i.price || 0) * i.qty,
+    desc: i.desc || ''
+  }));
+  const totalCost = recordedItems.reduce((sum, i) => sum + i.cost, 0);
+
+  const cancelEntry = {
+    id: 'CAN' + Date.now() + Math.floor(Math.random() * 100),
+    date: cancelDate,
+    time: cancelTime,
+    orderId: o.id,
+    table: o.table || (o.orderType || 'Dine-in'),
+    orderType: o.orderType || 'Dine-in',
+    items: recordedItems,
+    cost: totalCost,
+    waiter: o.waiter || (typeof currentUser !== 'undefined' ? currentUser?.name : 'Staff'),
+    cancelType: 'Full'
+  };
+  cancelledOrders.unshift(cancelEntry);
 
   // Print Kitchen Cancellation Ticket BEFORE removing order
   printKitchenCancellationTicket(o, cancelledTicketItems, true);
@@ -3521,6 +3610,8 @@ async function sendPrintJob(htmlContent, deviceName, silent = true) {
 function exportActiveFinanceCSV() {
   if (typeof activeFinanceTab !== 'undefined' && activeFinanceTab === 'petty-cash') {
     exportPettyCashCSV();
+  } else if (typeof activeFinanceTab !== 'undefined' && activeFinanceTab === 'cancelled-orders') {
+    exportCancelledOrdersCSV();
   } else {
     exportSalesCSV();
   }
@@ -3544,7 +3635,7 @@ async function exportSalesCSV() {
     csv += `"${s.id}","${s.date}","${s.orderType || 'Dine-in'}","${tableRef}","${phone}","${addr}","${itemSummary}",${sub},${disc},${perHead},${s.total},"${s.payment || 'Cash'}","${s.waiter || ''}"\n`;
   });
 
-  const defaultName = `DogarsCrust_Sales_Report_${new Date().toISOString().split('T')[0]}.csv`;
+  const defaultName = `DogarSajji_Sales_Report_${new Date().toISOString().split('T')[0]}.csv`;
   if (window.api && window.api.saveCSV) {
     const res = await window.api.saveCSV({ defaultName, content: csv });
     if (res.canceled) return;
@@ -3567,11 +3658,34 @@ async function exportPettyCashCSV() {
     csv += `"${p.id}","${p.date}","${p.category}","${desc}",${p.amount},"${notes}"\n`;
   });
 
-  const defaultName = `DogarsCrust_PettyCash_Report_${new Date().toISOString().split('T')[0]}.csv`;
+  const defaultName = `DogarSajji_PettyCash_Report_${new Date().toISOString().split('T')[0]}.csv`;
   if (window.api && window.api.saveCSV) {
     const res = await window.api.saveCSV({ defaultName, content: csv });
     if (res.canceled) return;
     if (res.success) toast(`Petty Cash CSV saved successfully! ✓`);
+    else toast(`Failed to export CSV: ${res.error}`, 'error');
+  } else {
+    downloadCSVFallback(csv, defaultName);
+  }
+}
+
+async function exportCancelledOrdersCSV() {
+  if (!cancelledOrders || cancelledOrders.length === 0) {
+    toast('No cancelled orders data available to export', 'error');
+    return;
+  }
+  let csv = 'Cancel ID,Date,Time,Order ID,Table/Type,Cancelled Items,Total Cost (Rs),Cancel Type,Staff\n';
+  cancelledOrders.forEach(c => {
+    const itemSummary = (c.items || []).map(i => `${i.qty}x ${i.name} (Rs ${i.price})`).join(' | ').replace(/"/g, '""');
+    const tableRef = c.orderType === 'Dine-in' ? `Table ${c.table}` : c.table;
+    csv += `"${c.id}","${c.date}","${c.time || ''}","${c.orderId || ''}","${tableRef}","${itemSummary}",${c.cost || 0},"${c.cancelType || 'Partial'}","${c.waiter || 'Staff'}"\n`;
+  });
+
+  const defaultName = `DogarSajji_Cancelled_Orders_Report_${new Date().toISOString().split('T')[0]}.csv`;
+  if (window.api && window.api.saveCSV) {
+    const res = await window.api.saveCSV({ defaultName, content: csv });
+    if (res.canceled) return;
+    if (res.success) toast(`Cancelled Orders CSV saved successfully! ✓`);
     else toast(`Failed to export CSV: ${res.error}`, 'error');
   } else {
     downloadCSVFallback(csv, defaultName);
@@ -4210,12 +4324,12 @@ function renderFinance(){
   </div>
   <!-- Finance Sub-Tabs -->
   <div style="display:flex;gap:.4rem;margin-bottom:1.25rem;border-bottom:1px solid var(--border);padding-bottom:.75rem">
-    ${['overview','petty-cash'].map(t=>`
+    ${['overview','petty-cash','cancelled-orders'].map(t=>`
       <button onclick="switchFinanceTab('${t}')" style="padding:.45rem 1.1rem;border-radius:var(--radius2);font-size:.85rem;font-weight:500;cursor:pointer;transition:.2s;border:1px solid ${activeFinanceTab===t?'var(--gold)':'transparent'};background:${activeFinanceTab===t?'var(--gold)':'transparent'};color:${activeFinanceTab===t?'var(--dark)':'var(--text2)'};font-family:'DM Sans',sans-serif">
-        ${t==='overview'?'📊 Overview':'💵 Petty Cash Book'}
+        ${t==='overview'?'📊 Overview':t==='petty-cash'?'💵 Petty Cash Book':`🚫 Cancelled Orders (${(cancelledOrders || []).length})`}
       </button>`).join('')}
   </div>
-  ${activeFinanceTab==='overview' ? renderFinanceOverview() : renderPettyCash()}`;
+  ${activeFinanceTab==='overview' ? renderFinanceOverview() : activeFinanceTab==='cancelled-orders' ? renderCancelledOrdersView() : renderPettyCash()}`;
 }
 
 function purgeLastTwoDaysData() {
@@ -4233,8 +4347,9 @@ async function confirmPurgeLastTwoDaysData(silent = false) {
     const todayStr = new Date().toISOString().split('T')[0];
     const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
-    // Filter out salesLedger transactions from today and yesterday
+    // Filter out salesLedger & cancelledOrders transactions from today and yesterday
     salesLedger = salesLedger.filter(s => s.date !== todayStr && s.date !== yesterdayStr);
+    cancelledOrders = cancelledOrders.filter(c => c.date !== todayStr && c.date !== yesterdayStr);
 
     // Active orders and unpaid bills from last 2 days
     orders = orders.filter(o => o.time && !o.time.includes(todayStr) && !o.time.includes(yesterdayStr));
@@ -4388,10 +4503,12 @@ function buildDateReportHTML(from,to){
   const sales=salesLedger.filter(s=>s.date>=from&&s.date<=to);
   const expenses=expenseLedger.filter(e=>e.date>=from&&e.date<=to);
   const petty=pettyCash.filter(p=>p.date>=from&&p.date<=to);
+  const dateCancelled=(cancelledOrders||[]).filter(c=>c.date>=from&&c.date<=to);
 
   const totalRevenue=sales.reduce((a,s)=>a+s.total,0);
   const totalExpenses=expenses.reduce((a,e)=>a+e.amount,0);
   const totalPetty=petty.reduce((a,p)=>a+p.amount,0);
+  const totalCancelledCost=dateCancelled.reduce((a,c)=>a+(c.cost||0),0);
   const totalAllExp=totalExpenses+totalPetty;
   const netProfit=totalRevenue-totalAllExp;
   const margin=totalRevenue>0?((netProfit/totalRevenue)*100).toFixed(1):0;
@@ -4423,7 +4540,7 @@ function buildDateReportHTML(from,to){
     <div style="background:rgba(201,168,76,.08);padding:1rem 1.25rem;border-bottom:1px solid var(--border2);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
       <div>
         <div style="font-family:'Playfair Display',serif;color:var(--gold);font-size:1.1rem">Finance Report</div>
-        <div style="font-size:.8rem;color:var(--text2);margin-top:.15rem">${fmtDate(from)} → ${fmtDate(to)} &nbsp;·&nbsp; ${sortedDates.length} day(s) &nbsp;·&nbsp; ${sales.length} transactions</div>
+        <div style="font-size:.8rem;color:var(--text2);margin-top:.15rem">${fmtDate(from)} → ${fmtDate(to)} &nbsp;·&nbsp; ${sortedDates.length} day(s) &nbsp;·&nbsp; ${sales.length} transactions &nbsp;·&nbsp; ${dateCancelled.length} cancellations</div>
       </div>
       <button class="print-btn" onclick="window.print()">🖨 Print Report</button>
     </div>
@@ -4433,6 +4550,7 @@ function buildDateReportHTML(from,to){
         ['💰 Revenue',`Rs ${totalRevenue.toLocaleString()}`,'var(--gold)'],
         ['💸 Expenses',`Rs ${totalAllExp.toLocaleString()}`,'var(--red)'],
         ['📦 Petty Cash',`Rs ${totalPetty.toLocaleString()}`,'var(--amber)'],
+        ['🚫 Lost (Cancelled)',`Rs ${totalCancelledCost.toLocaleString()}`,'var(--red)'],
         ['📈 Net Profit',`Rs ${netProfit.toLocaleString()}`,netProfit>=0?'var(--green)':'var(--red)'],
         ['📊 Margin',`${margin}%`,netProfit>=0?'var(--green)':'var(--red)'],
       ].map(([lbl,val,col])=>`
@@ -4503,8 +4621,29 @@ function buildDateReportHTML(from,to){
       <div class="bill-row"><span>Gross Revenue</span><span style="color:var(--gold)">Rs ${totalRevenue.toLocaleString()}</span></div>
       <div class="bill-row"><span>Operating Expenses</span><span style="color:var(--red)">− Rs ${totalExpenses.toLocaleString()}</span></div>
       <div class="bill-row"><span>Petty Cash</span><span style="color:var(--amber)">− Rs ${totalPetty.toLocaleString()}</span></div>
+      <div class="bill-row"><span>Cancelled Lost Revenue</span><span style="color:var(--red)">− Rs ${totalCancelledCost.toLocaleString()}</span></div>
       <div class="bill-row total" style="border-top:2px solid var(--border2)"><span>Net Profit</span><span style="color:${netProfit>=0?'var(--green)':'var(--red)'}">Rs ${netProfit.toLocaleString()}</span></div>
       <div style="font-size:.78rem;color:${netProfit>=0?'var(--green)':'var(--red)'};text-align:right;margin-top:.4rem">Margin: ${margin}% ${netProfit>=0?'↑':'↓'}</div>
+    </div>
+
+    <div style="border-top:1px solid var(--border);padding:1rem 1.25rem">
+      <div style="font-size:.82rem;font-weight:600;color:var(--red);margin-bottom:.75rem">🚫 Cancelled Orders & Items Log (${dateCancelled.length})</div>
+      ${dateCancelled.length===0?`<p style="color:var(--text3);font-size:.82rem">No cancelled orders in this period.</p>`:`
+      <div style="overflow-x:auto;margin-bottom:1rem">
+        <table style="font-size:.78rem;width:100%;border-collapse:collapse">
+          <thead><tr style="border-bottom:1px solid var(--border);color:var(--text2);text-align:left"><th style="padding:.4rem">Date & Time</th><th style="padding:.4rem">Table / Order</th><th style="padding:.4rem">Cancelled Item(s)</th><th style="padding:.4rem">Type</th><th style="padding:.4rem">Staff</th><th style="padding:.4rem;text-align:right">Lost Cost (Rs)</th></tr></thead>
+          <tbody>
+            ${dateCancelled.map(c=>`<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:.4rem;color:var(--text2)">${fmtDate(c.date)} ${c.time||''}</td>
+              <td style="padding:.4rem;color:var(--gold);font-weight:600">${c.orderType==='Dine-in'?'Table '+c.table:c.table}</td>
+              <td style="padding:.4rem;color:var(--text1)">${(c.items||[]).map(i=>`${i.qty}× ${i.name} (Rs ${i.price})`).join(', ')}</td>
+              <td style="padding:.4rem"><span style="background:rgba(239,68,68,0.12);color:var(--red);border-radius:4px;padding:.1rem .45rem;font-size:.7rem">${c.cancelType||'Cancelled'}</span></td>
+              <td style="padding:.4rem;color:var(--text2)">${c.waiter||'Staff'}</td>
+              <td style="padding:.4rem;text-align:right;font-weight:700;color:var(--red)">Rs ${(c.cost||0).toLocaleString()}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`}
     </div>
 
     <div style="border-top:1px solid var(--border);padding:1rem 1.25rem">
@@ -5104,6 +5243,7 @@ async function saveToLocal() {
         window.api.saveOrders(orders),
         window.api.saveUnpaidBills(unpaidBills),
         window.api.saveAppUsers(appUsers),
+        window.api.saveCancelledOrders ? window.api.saveCancelledOrders(cancelledOrders) : Promise.resolve(),
         window.api.saveSettings({ nextPettyId, supabaseConfig: currentSupConfig }),
       ]);
       console.log('💾 Data saved to local SQLite database');
@@ -5112,7 +5252,7 @@ async function saveToLocal() {
     // 2. Central Backend REST API (Web Browser Profile A / Profile B / Mobile)
     await apiCall('save-all', 'POST', {
       inventory, employees, pettyCash, salesLedger, expenseLedger,
-      menuItems, menuCategories, deals, tables, orders, unpaidBills, appUsers,
+      menuItems, menuCategories, deals, tables, orders, unpaidBills, appUsers, cancelledOrders,
       settings: { nextPettyId, supabaseConfig: currentSupConfig }
     });
 
@@ -5228,13 +5368,22 @@ async function saveToLocal() {
         }))));
       }
 
+      // Cancelled Orders
+      if (cancelledOrders && cancelledOrders.length > 0) {
+        promises.push(supabaseClient.from('cancelled_orders').upsert(cancelledOrders.map(c => ({
+          id: String(c.id), date: c.date || '', time: c.time || '', order_id: String(c.orderId || ''),
+          table_id: String(c.table || ''), order_type: c.orderType || 'Dine-in', items: c.items || [],
+          cost: c.cost || 0, waiter: c.waiter || '', cancel_type: c.cancelType || 'Partial'
+        }))));
+      }
+
       // Settings
       promises.push(supabaseClient.from('settings').upsert([
         { key: 'nextPettyId', value: { nextPettyId } }
       ]));
 
       await Promise.all(promises);
-      console.log('☁️ Synced all 12 tables to Supabase Cloud DB ✓');
+      console.log('☁️ Synced all tables to Supabase Cloud DB ✓');
     }
 
     // 4. Always update Web Browser LocalStorage as immediate fallback (for Vercel & Web refreshes)
@@ -5251,6 +5400,7 @@ async function saveToLocal() {
       localStorage.setItem('dogar_web_orders', JSON.stringify(orders || []));
       localStorage.setItem('dogar_web_unpaid_bills', JSON.stringify(unpaidBills || {}));
       localStorage.setItem('dogar_web_app_users', JSON.stringify(appUsers || []));
+      localStorage.setItem('dogar_web_cancelled_orders', JSON.stringify(cancelledOrders || []));
       localStorage.setItem('dogar_web_next_petty_id', String(nextPettyId || 1));
     } catch(e) { console.warn('LocalStorage web fallback save:', e); }
   } catch(e) { console.warn('Database save warning:', e); }
@@ -5465,7 +5615,7 @@ async function loadFromLocal() {
       await migrateLocalStorageIfNeeded();
       const isDbEmpty = await window.api.isDbEmpty();
       if (!isDbEmpty) {
-        const [inv, emp, pc, sl, el, mi, mc, dl, tb, ord, ub, settings, usr] = await Promise.all([
+        const [inv, emp, pc, sl, el, mi, mc, dl, tb, ord, ub, settings, usr, co] = await Promise.all([
           window.api.getInventory(),
           window.api.getEmployees(),
           window.api.getPettyCash(),
@@ -5479,6 +5629,7 @@ async function loadFromLocal() {
           window.api.getUnpaidBills(),
           window.api.getSettings(),
           window.api.getAppUsers(),
+          window.api.getCancelledOrders ? window.api.getCancelledOrders() : Promise.resolve([])
         ]);
 
         if (Array.isArray(inv)) inventory      = inv;
@@ -5492,6 +5643,7 @@ async function loadFromLocal() {
         if (Array.isArray(tb))  tables         = tb;
         if (Array.isArray(ord)) orders         = ord;
         if (ub && typeof ub === 'object') unpaidBills = ub;
+        if (Array.isArray(co))  cancelledOrders = co;
         if (Array.isArray(usr) && usr.length > 0) {
           appUsers = usr;
           const adminUser = appUsers.find(u => u.username.toLowerCase() === 'admin');
@@ -5524,6 +5676,7 @@ async function loadFromLocal() {
         if (Array.isArray(d.deals)) deals          = d.deals;
         if (Array.isArray(d.tables)) tables         = d.tables;
         if (Array.isArray(d.orders)) orders         = d.orders;
+        if (Array.isArray(d.cancelledOrders)) cancelledOrders = d.cancelledOrders;
         if (d.unpaidBills && typeof d.unpaidBills === 'object') unpaidBills = d.unpaidBills;
         if (d.settings && d.settings.nextPettyId != null) nextPettyId = d.settings.nextPettyId;
         if (d.settings && d.settings.supabaseConfig) {
@@ -5550,6 +5703,7 @@ async function loadFromLocal() {
         const localPc  = localStorage.getItem('dogar_web_petty_cash');
         const localSl  = localStorage.getItem('dogar_web_sales_ledger');
         const localEl  = localStorage.getItem('dogar_web_expense_ledger');
+        const localCo  = localStorage.getItem('dogar_web_cancelled_orders');
         const localUsr = localStorage.getItem('dogar_web_app_users');
         const localPid = localStorage.getItem('dogar_web_next_petty_id');
 
@@ -5564,6 +5718,7 @@ async function loadFromLocal() {
         if (localPc)  pettyCash      = JSON.parse(localPc);
         if (localSl)  salesLedger    = JSON.parse(localSl);
         if (localEl)  expenseLedger  = JSON.parse(localEl);
+        if (localCo)  cancelledOrders = JSON.parse(localCo);
         if (localUsr) appUsers       = JSON.parse(localUsr);
         if (localPid) nextPettyId    = parseInt(localPid) || 1;
 
@@ -5590,6 +5745,7 @@ async function loadFromLocal() {
         { data: cloudPc },
         { data: cloudSales },
         { data: cloudExp },
+        { data: cloudCancelled },
         { data: cloudSettings }
       ] = await Promise.all([
         supabaseClient.from('orders').select('*').neq('status', 'completed').order('created_at', { ascending: true }),
@@ -5603,6 +5759,7 @@ async function loadFromLocal() {
         supabaseClient.from('petty_cash').select('*').order('id', { ascending: true }),
         supabaseClient.from('sales_ledger').select('*').order('created_at', { ascending: true }),
         supabaseClient.from('expense_ledger').select('*').order('id', { ascending: true }),
+        supabaseClient.from('cancelled_orders').select('*').order('created_at', { ascending: false }),
         supabaseClient.from('settings').select('*')
       ]);
 
@@ -5683,6 +5840,14 @@ async function loadFromLocal() {
         }));
       }
 
+      if (Array.isArray(cloudCancelled) && cloudCancelled.length > 0) {
+        cancelledOrders = cloudCancelled.map(r => ({
+          id: r.id, date: r.date, time: r.time, orderId: r.order_id, table: r.table_id,
+          orderType: r.order_type || 'Dine-in', items: r.items || [], cost: r.cost || 0,
+          waiter: r.waiter || '', cancelType: r.cancel_type || 'Partial'
+        }));
+      }
+
       if (Array.isArray(cloudSettings) && cloudSettings.length > 0) {
         const pSetting = cloudSettings.find(s => s.key === 'nextPettyId');
         if (pSetting && pSetting.value && pSetting.value.nextPettyId) {
@@ -5690,7 +5855,7 @@ async function loadFromLocal() {
         }
       }
 
-      console.log('☁️ Loaded all 12 tables from Supabase Cloud DB ✓');
+      console.log('☁️ Loaded all tables from Supabase Cloud DB ✓');
     }
   } catch(e) { console.warn('Database load warning:', e); }
 }

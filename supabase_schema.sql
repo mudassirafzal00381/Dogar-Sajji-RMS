@@ -150,6 +150,21 @@ CREATE TABLE IF NOT EXISTS public.app_users (
   name TEXT DEFAULT ''
 );
 
+-- 14. CANCELLED ORDERS
+CREATE TABLE IF NOT EXISTS public.cancelled_orders (
+  id TEXT PRIMARY KEY,
+  date TEXT,
+  time TEXT,
+  order_id TEXT,
+  table_id INTEGER,
+  order_type TEXT DEFAULT 'Dine-in',
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  cost NUMERIC DEFAULT 0,
+  waiter TEXT DEFAULT '',
+  cancel_type TEXT DEFAULT 'Partial',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ══════════════════════════════════════════════════════════════════════════════
 -- SEED INITIAL DATA FOR DOGAR SAJJI
 -- ══════════════════════════════════════════════════════════════════════════════

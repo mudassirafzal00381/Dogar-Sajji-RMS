@@ -280,6 +280,19 @@ function createSchema() {
       role     TEXT NOT NULL DEFAULT 'Admin',
       name     TEXT DEFAULT ''
     );
+
+    CREATE TABLE IF NOT EXISTS cancelled_orders (
+      id         TEXT PRIMARY KEY,
+      date       TEXT,
+      time       TEXT,
+      order_id   TEXT,
+      table_id   INTEGER,
+      orderType  TEXT DEFAULT 'Dine-in',
+      items      TEXT NOT NULL DEFAULT '[]',
+      cost       REAL DEFAULT 0,
+      waiter     TEXT DEFAULT '',
+      cancelType TEXT DEFAULT 'Partial'
+    );
   `);
 }
 
@@ -557,6 +570,27 @@ function saveSettings(settings) {
   tx(settings);
 }
 
+function getCancelledOrders() {
+  return db.prepare('SELECT * FROM cancelled_orders ORDER BY rowid DESC').all().map(r => ({
+    id: r.id, date: r.date, time: r.time, orderId: r.order_id, table: r.table_id,
+    orderType: r.orderType || 'Dine-in', items: JSON.parse(r.items || '[]'),
+    cost: r.cost || 0, waiter: r.waiter || '', cancelType: r.cancelType || 'Partial'
+  }));
+}
+function saveCancelledOrders(cancelledOrders) {
+  replaceAll(
+    'cancelled_orders', cancelledOrders,
+    `INSERT INTO cancelled_orders (id,date,time,order_id,table_id,orderType,items,cost,waiter,cancelType)
+     VALUES (@id,@date,@time,@order_id,@table_id,@orderType,@items,@cost,@waiter,@cancelType)`,
+    c => ({
+      id: String(c.id), date: c.date || '', time: c.time || '', order_id: String(c.orderId || ''),
+      table_id: c.table ?? null, orderType: c.orderType || 'Dine-in',
+      items: JSON.stringify(c.items || []), cost: c.cost || 0,
+      waiter: c.waiter || '', cancelType: c.cancelType || 'Partial'
+    })
+  );
+}
+
 function getAllData() {
   return {
     inventory: getInventory(),
@@ -572,6 +606,7 @@ function getAllData() {
     unpaidBills: getUnpaidBills(),
     settings: getSettings(),
     appUsers: getAppUsers(),
+    cancelledOrders: getCancelledOrders(),
   };
 }
 
@@ -590,6 +625,7 @@ function saveAllData(data) {
   if (data.unpaidBills) saveUnpaidBills(data.unpaidBills);
   if (data.settings) saveSettings(data.settings);
   if (data.appUsers) saveAppUsers(data.appUsers);
+  if (data.cancelledOrders) saveCancelledOrders(data.cancelledOrders);
 }
 
 
@@ -598,7 +634,7 @@ function isDbEmpty() {
   const tables = [
     'menu_items', 'menu_categories', 'tables', 'orders', 'unpaid_bills',
     'inventory', 'employees', 'petty_cash', 'sales_ledger', 'expense_ledger',
-    'roti_orders', 'settings', 'deals',
+    'roti_orders', 'settings', 'deals', 'cancelled_orders',
   ];
   for (const t of tables) {
     const { count } = db.prepare(`SELECT COUNT(*) AS count FROM ${t}`).get();
@@ -621,6 +657,7 @@ function migrateFromLocalStorage(legacy) {
     if (legacy.orders) saveOrders(legacy.orders);
     if (legacy.unpaidBills) saveUnpaidBills(legacy.unpaidBills);
     if (legacy.settings) saveSettings(legacy.settings);
+    if (legacy.cancelledOrders) saveCancelledOrders(legacy.cancelledOrders);
   });
   tx(legacy);
   return true;
@@ -643,7 +680,7 @@ function clearAllData() {
   const tables = [
     'menu_items', 'menu_categories', 'tables', 'orders', 'unpaid_bills',
     'inventory', 'employees', 'petty_cash', 'sales_ledger', 'expense_ledger',
-    'roti_orders', 'settings', 'deals',
+    'roti_orders', 'settings', 'deals', 'cancelled_orders',
   ];
   const tx = db.transaction(() => {
     for (const t of tables) {
@@ -714,6 +751,7 @@ module.exports = {
   getExpenseLedger, saveExpenseLedger,
   getSettings, saveSettings,
   getAppUsers, saveAppUsers,
+  getCancelledOrders, saveCancelledOrders,
   getAllData, saveAllData,
   isDbEmpty,
   clearAllData,

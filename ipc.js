@@ -66,6 +66,9 @@ function registerIpcHandlers(db) {
     'db:getAppUsers': () => db.getAppUsers(),
     'db:saveAppUsers': (e, u) => db.saveAppUsers(u),
 
+    'db:getCancelledOrders': () => db.getCancelledOrders(),
+    'db:saveCancelledOrders': (e, c) => db.saveCancelledOrders(c),
+
     'db:isEmpty': () => db.isDbEmpty(),
     'db:clearAllData': () => db.clearAllData(),
     'db:migrateFromLocalStorage': (e, legacy) => db.migrateFromLocalStorage(legacy),

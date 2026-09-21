@@ -371,6 +371,19 @@ async function handleApiRequest(req, res, urlPath) {
       }
     }
 
+    if (urlPath === '/api/cancelled-orders') {
+      if (req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(database.getCancelledOrders()));
+      }
+      if (req.method === 'POST') {
+        const body = await parseJsonBody(req);
+        database.saveCancelledOrders(body);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true }));
+      }
+    }
+
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Endpoint not found' }));
   } catch (err) {
