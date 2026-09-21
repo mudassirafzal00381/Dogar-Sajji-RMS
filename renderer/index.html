@@ -912,13 +912,29 @@ let activeSection = '';
 let unpaidBills = {};
 
 // ── USERS & AUTHENTICATION ──
-let appUsers = [
+const DEFAULT_SYSTEM_USERS = [
   { username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin / Manager' },
   { username: 'order1', password: '1234', role: 'Order Taker', name: 'Order Taker 1' },
   { username: 'order2', password: '1234', role: 'Order Taker', name: 'Order Taker 2' }
 ];
 
+let appUsers = [ ...DEFAULT_SYSTEM_USERS ];
+
+function ensureDefaultAppUsersExist() {
+  if (!Array.isArray(appUsers) || appUsers.length === 0) {
+    appUsers = DEFAULT_SYSTEM_USERS.map(u => ({ ...u }));
+    return;
+  }
+  DEFAULT_SYSTEM_USERS.forEach(defUser => {
+    const existing = appUsers.find(u => String(u.username).toLowerCase() === defUser.username.toLowerCase());
+    if (!existing) {
+      appUsers.push({ ...defUser });
+    }
+  });
+}
+
 async function loadAppUsers(){
+  ensureDefaultAppUsersExist();
   if (window.api && window.api.getAppUsers) {
     try {
       const dbUsers = await window.api.getAppUsers();
@@ -926,7 +942,18 @@ async function loadAppUsers(){
         appUsers = dbUsers;
       }
     } catch(e) { console.warn('Failed loading app users:', e); }
+  } else {
+    try {
+      const res = await apiCall('app-users');
+      if (Array.isArray(res) && res.length > 0) appUsers = res;
+    } catch(e) {}
   }
+  ensureDefaultAppUsersExist();
+}
+
+async function saveAppUsersLocal() {
+  ensureDefaultAppUsersExist();
+  await saveToLocal();
 }
 
 function showLoginError(msg) {
@@ -939,6 +966,7 @@ function showLoginError(msg) {
 }
 
 function selectQuickUser(username) {
+  ensureDefaultAppUsersExist();
   const user = appUsers.find(u => String(u.username).toLowerCase() === String(username).toLowerCase());
   const usernameInput = document.getElementById('login-username');
   const passwordInput = document.getElementById('login-password');
@@ -956,22 +984,34 @@ function selectQuickUser(username) {
 
 function handleLoginForm(e) {
   if (e) e.preventDefault();
-  const usernameVal = document.getElementById('login-username')?.value.trim() || '';
-  const passwordVal = document.getElementById('login-password')?.value || '';
+  ensureDefaultAppUsersExist();
+
+  const usernameInput = document.getElementById('login-username');
+  const passwordInput = document.getElementById('login-password');
+  const usernameVal = (usernameInput?.value || '').trim();
+  const passwordVal = (passwordInput?.value || '').trim();
 
   if (!usernameVal) {
     showLoginError('Please enter your username.');
     return;
   }
 
-  const user = appUsers.find(u => String(u.username).toLowerCase() === usernameVal.toLowerCase());
+  let user = appUsers.find(u => String(u.username).toLowerCase() === usernameVal.toLowerCase());
+  
+  // Robust fallback: if standard account is selected but not present in appUsers array
+  if (!user && (usernameVal.toLowerCase() === 'admin' || usernameVal.toLowerCase() === 'order1' || usernameVal.toLowerCase() === 'order2')) {
+    user = DEFAULT_SYSTEM_USERS.find(u => u.username.toLowerCase() === usernameVal.toLowerCase());
+    if (user) appUsers.push({ ...user });
+  }
+
   if (!user) {
     showLoginError('Invalid username. Default accounts: admin, order1, order2.');
     return;
   }
 
-  if (String(user.password) !== passwordVal) {
-    showLoginError('Incorrect password/PIN. Default PIN is 1234.');
+  const userPassword = String(user.password || '1234').trim();
+  if (userPassword !== passwordVal) {
+    showLoginError(`Incorrect password/PIN for ${user.name || user.username}. Default PIN is 1234.`);
     return;
   }
 
@@ -5858,6 +5898,7 @@ async function loadFromLocal() {
       console.log('☁️ Loaded all tables from Supabase Cloud DB ✓');
     }
   } catch(e) { console.warn('Database load warning:', e); }
+  ensureDefaultAppUsersExist();
 }
 
 function openCloudConfigModal() {
