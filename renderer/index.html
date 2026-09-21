@@ -2371,40 +2371,12 @@ function printKitchenCancellationTicket(order, cancelledItems, isFullCancellatio
 async function updateOrder(id, status) {
   const o = orders.find(x => x.id === id);
   if (!o) return;
-  if (API_CONNECTED) {
-    await apiPut('/api/orders/' + id, { status }).catch(() => {});
-  }
   if (status === 'rejected') {
     openRejectOrderModal(id);
     return;
   }
-    // Rejected orders are dropped entirely rather than kept with a status
-    // flag — nothing else in the app filters on 'rejected', so leaving them
-    // in `orders` let them silently reappear as billable/payable, which is
-    // the "Billing sometimes creates a problem" the user reported.
-    orders = orders.filter(x => x.id !== id);
-    const type = o.orderType || 'Dine-in';
-    const billKey = type === 'Dine-in' ? o.table : o.id;
-    if (billKey != null && unpaidBills[billKey]) {
-      const stillActive = orders.some(x => (type === 'Dine-in' ? x.table === billKey : x.id === billKey));
-      if (!stillActive) delete unpaidBills[billKey];
-    }
-    if (type === 'Dine-in' && !orders.some(x => x.table === o.table)) {
-      const t = tables.find(t => t.id === o.table);
-      if (t) { t.status = 'available'; t.persons = 0; }
-    }
-    if (supabaseClient) {
-      try {
-        await supabaseClient.from('orders').delete().eq('id', String(id));
-        if (billKey != null && !unpaidBills[billKey]) {
-          await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey));
-        }
-      } catch(e) {}
-    }
-    await saveToLocal();
-    showSection('orders');
-    toast(`Order ${orderLabel(o)} rejected & removed`);
-    return;
+  if (API_CONNECTED) {
+    await apiPut('/api/orders/' + id, { status }).catch(() => {});
   }
   o.status = status;
   await saveToLocal();
