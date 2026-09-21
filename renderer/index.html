@@ -4941,12 +4941,12 @@ function renderFinanceOverview(){
   const weekSales   = salesLedger.filter(s=>s.date>=monday_str&&s.date<=today).reduce((a,s)=>a+s.total,0);
   const monthSales  = salesLedger.filter(s=>s.date.startsWith(month_str)).reduce((a,s)=>a+s.total,0);
 
-  // Expenses this month: expenseLedger + petty cash
-  const monthExp    = expenseLedger.filter(e=>e.date.startsWith(month_str)).reduce((a,e)=>a+e.amount,0);
-  const monthPetty  = pettyCash.filter(p=>p.date.startsWith(month_str)).reduce((a,p)=>a+p.amount,0);
-  const totalMonthExp = monthExp + monthPetty;
-  const netProfit   = monthSales - totalMonthExp;
-
+  // Expenses today: expenseLedger + petty cash
+  const expCats={};
+  expenseLedger.filter(e=>e.date===today).forEach(e=>{expCats[e.category]=(expCats[e.category]||0)+e.amount;});
+  pettyCash.filter(p=>p.date===today).forEach(p=>{expCats['Petty Cash']=(expCats['Petty Cash']||0)+p.amount;});
+  const expEntries=Object.entries(expCats).sort((a,b)=>b[1]-a[1]);
+  const totalTodayExp=expEntries.reduce((sum,[,amt])=>sum+amt,0);
   // ── Build last-7-days chart ──
   const last7 = [];
   for(let i=6;i>=0;i--){
@@ -4957,12 +4957,6 @@ function renderFinanceOverview(){
     last7.push({ds,dayName,total});
   }
   const maxBar=Math.max(...last7.map(d=>d.total),1);
-
-  // ── Expenses breakdown this month ──
-  const expCats={};
-  expenseLedger.filter(e=>e.date.startsWith(month_str)).forEach(e=>{expCats[e.category]=(expCats[e.category]||0)+e.amount;});
-  pettyCash.filter(p=>p.date.startsWith(month_str)).forEach(p=>{expCats['Petty Cash']=(expCats['Petty Cash']||0)+p.amount;});
-  const expEntries=Object.entries(expCats).sort((a,b)=>b[1]-a[1]);
 
   const noSales = salesLedger.length===0;
 
@@ -5012,20 +5006,20 @@ function renderFinanceOverview(){
       </div>`}
     </div>
     <div class="card card-gold">
-      <h3>💸 Expenses This Month</h3>
-      ${expEntries.length===0?`<div style="text-align:center;padding:2rem 1rem;color:var(--text3);font-size:.85rem">No expenses recorded yet.</div>`:''}
+      <h3>💸 Today's Expenses</h3>
+      ${expEntries.length===0?`<div style="text-align:center;padding:2rem 1rem;color:var(--text3);font-size:.85rem">No expenses recorded today.</div>`:''}
       ${expEntries.map(([cat,amt])=>{
-        const pct=totalMonthExp>0?Math.round(amt/totalMonthExp*100):0;
+        const pct=totalTodayExp>0?Math.round(amt/totalTodayExp*100):0;
         return`<div style="margin-bottom:.75rem">
           <div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:.25rem">
             <span style="color:var(--text2)">${cat}</span>
             <span style="color:var(--text1)">Rs ${amt.toLocaleString()} <span style="color:var(--text3);font-size:.75rem">(${pct}%)</span></span>
           </div>
-          <div class="stock-bar"><div class="stock-fill" style="width:${pct}%;background:var(--gold)"></div></div>
+          <div class="stock-bar"><div class="stock-fill" style="width:${pct}%;background:var(--red)"></div></div>
         </div>`;}).join('')}
       ${expEntries.length>0?`<div style="border-top:1px solid var(--border2);padding-top:.75rem;margin-top:.5rem;display:flex;justify-content:space-between">
-        <strong style="color:var(--text1)">Total Expenses</strong>
-        <strong style="color:var(--red)">Rs ${totalMonthExp.toLocaleString()}</strong>
+        <strong style="color:var(--text1)">Total Expenses Today</strong>
+        <strong style="color:var(--red)">Rs ${totalTodayExp.toLocaleString()}</strong>
       </div>`:''}
     </div>
     <div class="card" style="grid-column:1/-1">
