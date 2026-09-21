@@ -1165,14 +1165,14 @@ function renderDashboard(){
     const safeCancelled = Array.isArray(cancelledOrders) ? cancelledOrders : [];
     const safeEmployees = Array.isArray(employees) ? employees : [];
 
-    const totalSales = safeSales.filter(s=>s && s.date===todayStr).reduce((a,s)=>a+(s.total||0),0);
+    const totalSales = safeSales.filter(s=>s && s.date===todayStr && !s.closed).reduce((a,s)=>a+(s.total||0),0);
     const yesterdaySales = safeSales.filter(s=>s && s.date===yesterdayStr).reduce((a,s)=>a+(s.total||0),0);
     const salesTrend = yesterdaySales>0 ? Math.round((totalSales-yesterdaySales)/yesterdaySales*100) : null;
-    const ordersToday = safeOrders.length + safeSales.filter(s=>s && s.date===todayStr).length;
+    const ordersToday = safeOrders.length + safeSales.filter(s=>s && s.date===todayStr && !s.closed).length;
     const pending = safeOrders.filter(o=>o && o.status==='pending').length;
     const occupied = safeTables.filter(t=>t && t.status==='occupied').length;
     const lowStock = safeInventory.filter(i=>i && i.stock<i.min);
-    const cancelledToday = safeCancelled.filter(c => c && c.date === todayStr);
+    const cancelledToday = safeCancelled.filter(c => c && c.date === todayStr && !c.closed);
     const lostRevenueToday = cancelledToday.reduce((a, c) => a + (c.cost || 0), 0);
 
   return `
@@ -4403,12 +4403,12 @@ function renderFinance(){
   </div>
   <!-- Finance Sub-Tabs -->
   <div style="display:flex;gap:.4rem;margin-bottom:1.25rem;border-bottom:1px solid var(--border);padding-bottom:.75rem">
-    ${['overview','petty-cash','cancelled-orders'].map(t=>`
+    ${['overview','daily-closeouts','petty-cash','cancelled-orders'].map(t=>`
       <button onclick="switchFinanceTab('${t}')" style="padding:.45rem 1.1rem;border-radius:var(--radius2);font-size:.85rem;font-weight:500;cursor:pointer;transition:.2s;border:1px solid ${activeFinanceTab===t?'var(--gold)':'transparent'};background:${activeFinanceTab===t?'var(--gold)':'transparent'};color:${activeFinanceTab===t?'var(--dark)':'var(--text2)'};font-family:'DM Sans',sans-serif">
-        ${t==='overview'?'📊 Overview':t==='petty-cash'?'💵 Petty Cash Book':`🚫 Cancelled Orders (${(cancelledOrders || []).length})`}
+        ${t==='overview'?'📊 Overview':t==='daily-closeouts'?`🌙 Day Closeouts (${(dailyCloseouts||[]).length})`:t==='petty-cash'?'💵 Petty Cash Book':`🚫 Cancelled Orders (${(cancelledOrders || []).length})`}
       </button>`).join('')}
   </div>
-  ${activeFinanceTab==='overview' ? renderFinanceOverview() : activeFinanceTab==='cancelled-orders' ? renderCancelledOrdersView() : renderPettyCash()}`;
+  ${activeFinanceTab==='overview' ? renderFinanceOverview() : activeFinanceTab==='daily-closeouts' ? renderDailyCloseoutsView() : activeFinanceTab==='cancelled-orders' ? renderCancelledOrdersView() : renderPettyCash()}`;
 }
 
 function purgeLastTwoDaysData() {
@@ -4526,6 +4526,165 @@ function renderCancelledOrdersView() {
   </div>`;
 }
 
+function renderDailyCloseoutsView() {
+  const list = Array.isArray(dailyCloseouts) ? dailyCloseouts : [];
+  const totalSalesAll = list.reduce((a, c) => a + (c.totalSales || 0), 0);
+  const totalProfitAll = list.reduce((a, c) => a + (c.totalProfit || 0), 0);
+  const totalCancelledCostAll = list.reduce((a, c) => a + (c.totalCancelledCost || 0), 0);
+
+  return `
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem;margin-bottom:1.25rem">
+    <div class="petty-summary-card">
+      <div class="ps-num" style="color:var(--gold)">${list.length}</div>
+      <div class="ps-lbl">Total 1-Day Calculated Closeouts</div>
+    </div>
+    <div class="petty-summary-card">
+      <div class="ps-num" style="color:var(--green)">Rs ${totalSalesAll.toLocaleString()}</div>
+      <div class="ps-lbl">Cumulative Closeout Sales</div>
+    </div>
+    <div class="petty-summary-card">
+      <div class="ps-num" style="color:var(--gold)">Rs ${totalProfitAll.toLocaleString()}</div>
+      <div class="ps-lbl">Cumulative Closeout Net Profit</div>
+    </div>
+    <div class="petty-summary-card">
+      <div class="ps-num" style="color:var(--red)">Rs ${totalCancelledCostAll.toLocaleString()}</div>
+      <div class="ps-lbl">Total Cancelled Cost Recorded</div>
+    </div>
+  </div>
+
+  <div class="card card-gold" style="padding:0;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--border)">
+      <div>
+        <h3 style="margin:0">🌙 Official 1-Day Closeouts Log & History</h3>
+        <div style="font-size:.78rem;color:var(--text2);margin-top:.2rem">Each closeout calculates 1 full day sales, expenses, profit, and cancelled orders into an official Owner Receipt.</div>
+      </div>
+      <button class="btn-primary" style="padding:.5rem 1rem;font-weight:700;background:var(--gold);color:var(--dark);border-color:var(--gold)" onclick="triggerEndDaySales()">
+        🌙 Close Current Day Sales
+      </button>
+    </div>
+    ${list.length === 0 ? `
+      <p style="color:var(--text3);text-align:center;padding:2.5rem;font-size:.88rem">No End Day Sales closeouts recorded yet. Click "🌙 Close Current Day Sales" above to create your first 1-day closeout report.</p>
+    ` : `
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem;text-align:left">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);color:var(--text2);background:var(--surface2)">
+              <th style="padding:.6rem 1rem">Closeout Date & Time</th>
+              <th style="padding:.6rem 1rem">Closeout ID</th>
+              <th style="padding:.6rem 1rem">Closed Sales (Rs)</th>
+              <th style="padding:.6rem 1rem">Total Expenses (Rs)</th>
+              <th style="padding:.6rem 1rem">Net Profit (Rs)</th>
+              <th style="padding:.6rem 1rem">Cancelled Orders</th>
+              <th style="padding:.6rem 1rem">Closed By</th>
+              <th style="padding:.6rem 1rem;text-align:right">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map(c => `
+              <tr style="border-bottom:1px solid var(--border)">
+                <td style="padding:.6rem 1rem;color:var(--text1)"><strong>${c.date || ''}</strong> <span style="font-size:.75rem;color:var(--text2)">${c.time || ''}</span></td>
+                <td style="padding:.6rem 1rem;color:var(--blue)">${c.id || ''}</td>
+                <td style="padding:.6rem 1rem"><strong style="color:var(--gold)">Rs ${(c.totalSales || 0).toLocaleString()}</strong> <span style="font-size:.72rem;color:var(--text3)">(${c.salesCount || 0} orders)</span></td>
+                <td style="padding:.6rem 1rem;color:var(--red)">Rs ${(c.totalExpenses || 0).toLocaleString()}</td>
+                <td style="padding:.6rem 1rem"><strong style="color:${(c.totalProfit || 0) >= 0 ? 'var(--green)' : 'var(--red)'}">Rs ${(c.totalProfit || 0).toLocaleString()}</strong></td>
+                <td style="padding:.6rem 1rem"><span style="color:var(--red)">${c.cancelledCount || 0} (Rs ${(c.totalCancelledCost || 0).toLocaleString()})</span></td>
+                <td style="padding:.6rem 1rem;color:var(--text2)">${c.closedBy || 'Admin'}</td>
+                <td style="padding:.6rem 1rem;text-align:right">
+                  <button class="btn-sm btn-gold" style="font-size:.75rem;padding:.25rem .65rem" onclick="reprintCloseoutReceipt('${c.id}')">🖨 Reprint Receipt</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `}
+  </div>`;
+}
+
+function reprintCloseoutReceipt(closeoutId) {
+  const c = (dailyCloseouts || []).find(x => x.id === closeoutId);
+  if (!c) { toast('Closeout record not found', 'error'); return; }
+
+  const marginPct = c.totalSales > 0 ? ((c.totalProfit / c.totalSales) * 100).toFixed(1) : 0;
+  const receiptHtml = `<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
+  <title>End Day Sales Report - ${c.date}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+    @page { size: 80mm portrait; margin: 0; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 12px;
+      color: #000 !important;
+      background: #fff;
+      width: 80mm;
+      padding: 4mm 4mm 8mm 4mm;
+      -webkit-font-smoothing: antialiased;
+      print-color-adjust: exact;
+    }
+    .center { text-align: center; }
+    .right { text-align: right; }
+    .bold { font-weight: 700; }
+    .heavy { font-weight: 900; }
+    .divider { border-top: 1px dashed #000; margin: 6px 0; }
+    .divider-solid { border-top: 2px solid #000; margin: 6px 0; }
+    .row { display: flex; justify-content: space-between; margin: 4px 0; font-size: 12px; }
+    .big-box { border: 2px solid #000; border-radius: 4px; padding: 8px; margin: 8px 0; }
+    .box-title { font-size: 11px; font-weight: 800; letter-spacing: 0.5px; border-bottom: 1px solid #000; padding-bottom: 4px; margin-bottom: 6px; text-transform: uppercase; }
+  </style>
+  </head><body>
+  <div class="center heavy" style="font-size:16px;letter-spacing:1px;text-transform:uppercase">DOGAR SAJJI</div>
+  <div class="center" style="font-size:10px;font-weight:500;margin-top:2px">In Front of Govt Graduate College, Multan Road, Muzaffargarh</div>
+  <div class="center" style="font-size:10px;font-weight:600">Ph: 0300-1863406 / 0343-4763406</div>
+  <div class="divider-solid"></div>
+  <div class="center heavy" style="font-size:13px;letter-spacing:1px;margin:3px 0">*** END OF DAY SALES REPORT ***</div>
+  <div class="center heavy" style="font-size:11px;margin-bottom:3px;letter-spacing:0.5px">[ REPRINTED OWNER RECEIPT ]</div>
+  <div class="divider"></div>
+  <div class="row"><span style="font-weight:500">Date:</span><span class="bold">${c.date}</span></div>
+  <div class="row"><span style="font-weight:500">Time:</span><span class="bold">${c.time}</span></div>
+  <div class="row"><span style="font-weight:500">Closed By:</span><span class="bold">${c.closedBy || 'Admin'}</span></div>
+  <div class="row"><span style="font-weight:500">Day Status:</span><span class="heavy" style="text-transform:uppercase">1 DAY CALCULATED & CLOSED</span></div>
+  <div class="divider-solid"></div>
+  <div class="big-box">
+    <div class="box-title">📊 TODAY'S FINANCIAL SUMMARY</div>
+    <div class="row heavy" style="font-size:13px"><span>TODAY'S TOTAL SALES:</span><span>Rs ${(c.totalSales||0).toLocaleString()}</span></div>
+    <div class="row" style="font-size:11px;margin-bottom:4px;font-weight:500"><span>Total Orders Settled:</span><span class="bold">${c.salesCount||0} orders</span></div>
+    <div class="divider"></div>
+    <div class="row heavy" style="font-size:12px"><span>TODAY'S TOTAL EXPENSE:</span><span>Rs ${(c.totalExpenses||0).toLocaleString()}</span></div>
+    <div class="row" style="font-size:10px;font-weight:500"><span>(Operating + Petty Cash)</span></div>
+    <div class="divider"></div>
+    <div class="row heavy" style="font-size:14px"><span>TODAY'S TOTAL PROFIT:</span><span>Rs ${(c.totalProfit||0).toLocaleString()}</span></div>
+    <div class="row" style="font-size:11px;font-weight:500"><span>Net Profit Margin:</span><span class="bold">${marginPct}%</span></div>
+  </div>
+  <div class="big-box">
+    <div class="box-title">🚫 CANCELLED ORDERS SUMMARY</div>
+    <div class="row" style="font-size:12px"><span style="font-weight:500">Total Cancelled Orders:</span><span class="heavy">${c.cancelledCount||0}</span></div>
+    <div class="row heavy" style="font-size:13px;margin-top:4px"><span>Total Cancelled Cost:</span><span>Rs ${(c.totalCancelledCost||0).toLocaleString()}</span></div>
+  </div>
+  <div class="divider-solid"></div>
+  <div style="margin-top:18px">
+    <div class="row" style="margin-top:18px"><span style="font-weight:600">Admin Signature: ____________</span></div>
+    <div class="row" style="margin-top:18px"><span style="font-weight:600">Owner Signature: ____________</span></div>
+  </div>
+  <div class="divider"></div>
+  <div class="center heavy" style="font-size:11px;margin-top:6px;letter-spacing:0.5px">Developer Contact: 03255775600</div>
+  <div class="center" style="font-size:9px;margin-top:2px;font-weight:500">Dogar Sajji POS System &bull; Day Closeout</div>
+  </body></html>`;
+
+  const printerDevice = localStorage.getItem('hfc_printer_device') || '';
+  const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
+
+  if (window.api && window.api.printReceipt) {
+    toast('Reprinting Owner End Day Sales Receipt...', 'info');
+    window.api.printReceipt(receiptHtml, { silent: silentPrint, deviceName: printerDevice || undefined }).catch(() => {
+      fallbackPrintWindow(receiptHtml, false);
+    });
+  } else {
+    fallbackPrintWindow(receiptHtml, false);
+  }
+}
+
 function triggerEndDaySales() {
   const todayStr = new Date().toISOString().split('T')[0];
   const safeSales = Array.isArray(salesLedger) ? salesLedger : [];
@@ -4533,14 +4692,25 @@ function triggerEndDaySales() {
   const safePetty = Array.isArray(pettyCash) ? pettyCash : [];
   const safeCancelled = Array.isArray(cancelledOrders) ? cancelledOrders : [];
 
-  const todaySales = safeSales.filter(s => s && s.date === todayStr).reduce((sum, s) => sum + (s.total || 0), 0);
-  const todaySalesCount = safeSales.filter(s => s && s.date === todayStr).length;
-  const todayExpenses = safeExp.filter(e => e && e.date === todayStr).reduce((sum, e) => sum + (e.amount || 0), 0);
-  const todayPetty = safePetty.filter(p => p && p.date === todayStr).reduce((sum, p) => sum + (p.amount || 0), 0);
+  let unclosedSales = safeSales.filter(s => s && s.date === todayStr && !s.closed);
+  let unclosedExp = safeExp.filter(e => e && e.date === todayStr && !e.closed);
+  let unclosedPetty = safePetty.filter(p => p && p.date === todayStr && !p.closed);
+  let unclosedCancelled = safeCancelled.filter(c => c && c.date === todayStr && !c.closed);
+
+  if (unclosedSales.length === 0 && safeSales.filter(s => s && s.date === todayStr).length > 0 && (dailyCloseouts || []).length === 0) {
+    unclosedSales = safeSales.filter(s => s && s.date === todayStr);
+    unclosedExp = safeExp.filter(e => e && e.date === todayStr);
+    unclosedPetty = safePetty.filter(p => p && p.date === todayStr);
+    unclosedCancelled = safeCancelled.filter(c => c && c.date === todayStr);
+  }
+
+  const todaySales = unclosedSales.reduce((sum, s) => sum + (s.total || 0), 0);
+  const todaySalesCount = unclosedSales.length;
+  const todayExpenses = unclosedExp.reduce((sum, e) => sum + (e.amount || 0), 0);
+  const todayPetty = unclosedPetty.reduce((sum, p) => sum + (p.amount || 0), 0);
   const totalTodayExpenses = todayExpenses + todayPetty;
   const todayProfit = todaySales - totalTodayExpenses;
-  const cancelledToday = safeCancelled.filter(c => c && c.date === todayStr);
-  const todayCancelledCost = cancelledToday.reduce((sum, c) => sum + (c.cost || 0), 0);
+  const todayCancelledCost = unclosedCancelled.reduce((sum, c) => sum + (c.cost || 0), 0);
 
   showModal(`
     <div style="padding:.5rem">
@@ -4548,24 +4718,24 @@ function triggerEndDaySales() {
         🌙 End Day Sales Closeout & Owner Receipt
       </h3>
       <p style="font-size:.84rem;color:var(--text2);margin-bottom:1rem;line-height:1.4">
-        Closing today's sales summary (${new Date().toLocaleDateString('en-PK', { weekday:'long', year:'numeric', month:'long', day:'numeric'})}). This action will generate the official <strong>1 Day Owner Receipt</strong> containing today's total sales, expenses, net profit, and itemized cancelled orders cost.
+        Closing today's sales summary (${new Date().toLocaleDateString('en-PK', { weekday:'long', year:'numeric', month:'long', day:'numeric'})}). This will calculate <strong>1 Day Closeout</strong>, print the Owner Receipt, and reset today's active sales & expenses to <strong>Rs 0</strong> for the next day/shift.
       </p>
 
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);padding:1rem;margin-bottom:1rem;font-size:.85rem">
         <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)">
-          <span>💰 Today's Total Sales (${todaySalesCount} orders)</span>
+          <span>💰 Active Shift Sales (${todaySalesCount} orders)</span>
           <strong style="color:var(--gold)">Rs ${todaySales.toLocaleString()}</strong>
         </div>
         <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)">
-          <span>💸 Today's Total Expenses (Operating + Petty Cash)</span>
+          <span>💸 Active Shift Expenses (Operating + Petty Cash)</span>
           <strong style="color:var(--red)">Rs ${totalTodayExpenses.toLocaleString()}</strong>
         </div>
         <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)">
-          <span>📈 Today's Total Net Profit</span>
+          <span>📈 Active Shift Net Profit</span>
           <strong style="color:${todayProfit >= 0 ? 'var(--green)' : 'var(--red)'}">Rs ${todayProfit.toLocaleString()}</strong>
         </div>
         <div style="display:flex;justify-content:space-between;padding:.35rem 0">
-          <span>🚫 Today's Cancelled Orders (${cancelledToday.length} events)</span>
+          <span>🚫 Active Shift Cancelled Orders (${unclosedCancelled.length} events)</span>
           <strong style="color:var(--red)">Rs ${todayCancelledCost.toLocaleString()}</strong>
         </div>
       </div>
@@ -4573,7 +4743,7 @@ function triggerEndDaySales() {
       <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;margin-top:1rem">
         <button class="btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn-primary" style="padding:.65rem 1.4rem;font-weight:700;background:var(--gold);color:var(--dark);border-color:var(--gold)" onclick="confirmEndDaySales()">
-          🖨 Print Owner Receipt & Record Day Closeout
+          🖨 Print Owner Receipt & Start Next Day
         </button>
       </div>
     </div>
@@ -4593,14 +4763,25 @@ async function printEndDaySalesReport() {
   const safePetty = Array.isArray(pettyCash) ? pettyCash : [];
   const safeCancelled = Array.isArray(cancelledOrders) ? cancelledOrders : [];
 
-  const todaySales = safeSales.filter(s => s && s.date === todayStr).reduce((sum, s) => sum + (s.total || 0), 0);
-  const todaySalesCount = safeSales.filter(s => s && s.date === todayStr).length;
-  const todayExpenses = safeExp.filter(e => e && e.date === todayStr).reduce((sum, e) => sum + (e.amount || 0), 0);
-  const todayPetty = safePetty.filter(p => p && p.date === todayStr).reduce((sum, p) => sum + (p.amount || 0), 0);
+  let unclosedSales = safeSales.filter(s => s && s.date === todayStr && !s.closed);
+  let unclosedExp = safeExp.filter(e => e && e.date === todayStr && !e.closed);
+  let unclosedPetty = safePetty.filter(p => p && p.date === todayStr && !p.closed);
+  let unclosedCancelled = safeCancelled.filter(c => c && c.date === todayStr && !c.closed);
+
+  if (unclosedSales.length === 0 && safeSales.filter(s => s && s.date === todayStr).length > 0 && (dailyCloseouts || []).length === 0) {
+    unclosedSales = safeSales.filter(s => s && s.date === todayStr);
+    unclosedExp = safeExp.filter(e => e && e.date === todayStr);
+    unclosedPetty = safePetty.filter(p => p && p.date === todayStr);
+    unclosedCancelled = safeCancelled.filter(c => c && c.date === todayStr);
+  }
+
+  const todaySales = unclosedSales.reduce((sum, s) => sum + (s.total || 0), 0);
+  const todaySalesCount = unclosedSales.length;
+  const todayExpenses = unclosedExp.reduce((sum, e) => sum + (e.amount || 0), 0);
+  const todayPetty = unclosedPetty.reduce((sum, p) => sum + (p.amount || 0), 0);
   const totalTodayExpenses = todayExpenses + todayPetty;
   const todayProfit = todaySales - totalTodayExpenses;
-  const cancelledToday = safeCancelled.filter(c => c && c.date === todayStr);
-  const todayCancelledCost = cancelledToday.reduce((sum, c) => sum + (c.cost || 0), 0);
+  const todayCancelledCost = unclosedCancelled.reduce((sum, c) => sum + (c.cost || 0), 0);
   const marginPct = todaySales > 0 ? ((todayProfit / todaySales) * 100).toFixed(1) : 0;
 
   // Record 1 Day closeout event into dailyCloseouts
@@ -4613,13 +4794,20 @@ async function printEndDaySalesReport() {
     totalExpenses: totalTodayExpenses,
     totalProfit: todayProfit,
     totalCancelledCost: todayCancelledCost,
-    cancelledCount: cancelledToday.length,
+    cancelledCount: unclosedCancelled.length,
     closedBy: currentUser || 'Admin',
     timestamp: Date.now()
   };
 
   if (!Array.isArray(dailyCloseouts)) dailyCloseouts = [];
   dailyCloseouts.unshift(closeoutRecord);
+
+  // Mark active items as closed for this closeout period so Today's Sales resets to 0 for next day
+  unclosedSales.forEach(s => { s.closed = true; s.closeoutId = closeoutRecord.id; });
+  unclosedExp.forEach(e => { e.closed = true; e.closeoutId = closeoutRecord.id; });
+  unclosedPetty.forEach(p => { p.closed = true; p.closeoutId = closeoutRecord.id; });
+  unclosedCancelled.forEach(c => { c.closed = true; c.closeoutId = closeoutRecord.id; });
+
   await saveToLocal();
 
   // Thermal Receipt HTML for Owner
@@ -4872,6 +5060,7 @@ function buildDateReportHTML(from,to){
   const expenses=expenseLedger.filter(e=>e.date>=from&&e.date<=to);
   const petty=pettyCash.filter(p=>p.date>=from&&p.date<=to);
   const dateCancelled=(cancelledOrders||[]).filter(c=>c.date>=from&&c.date<=to);
+  const rangeCloseouts=(dailyCloseouts||[]).filter(c=>c.date>=from&&c.date<=to);
 
   const totalRevenue=sales.reduce((a,s)=>a+s.total,0);
   const totalExpenses=expenses.reduce((a,e)=>a+e.amount,0);
@@ -4908,7 +5097,7 @@ function buildDateReportHTML(from,to){
     <div style="background:rgba(201,168,76,.08);padding:1rem 1.25rem;border-bottom:1px solid var(--border2);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
       <div>
         <div style="font-family:'Playfair Display',serif;color:var(--gold);font-size:1.1rem">Finance Report</div>
-        <div style="font-size:.8rem;color:var(--text2);margin-top:.15rem">${fmtDate(from)} → ${fmtDate(to)} &nbsp;·&nbsp; ${sortedDates.length} day(s) &nbsp;·&nbsp; ${sales.length} transactions &nbsp;·&nbsp; ${dateCancelled.length} cancellations</div>
+        <div style="font-size:.8rem;color:var(--text2);margin-top:.15rem">${fmtDate(from)} → ${fmtDate(to)} &nbsp;·&nbsp; ${rangeCloseouts.length} 1-day closeout(s) calculated &nbsp;·&nbsp; ${sales.length} transactions &nbsp;·&nbsp; ${dateCancelled.length} cancellations</div>
       </div>
       <button class="print-btn" onclick="window.print()">🖨 Print Report</button>
     </div>
@@ -4992,6 +5181,39 @@ function buildDateReportHTML(from,to){
       <div class="bill-row"><span>Cancelled Lost Revenue</span><span style="color:var(--red)">− Rs ${totalCancelledCost.toLocaleString()}</span></div>
       <div class="bill-row total" style="border-top:2px solid var(--border2)"><span>Net Profit</span><span style="color:${netProfit>=0?'var(--green)':'var(--red)'}">Rs ${netProfit.toLocaleString()}</span></div>
       <div style="font-size:.78rem;color:${netProfit>=0?'var(--green)':'var(--red)'};text-align:right;margin-top:.4rem">Margin: ${margin}% ${netProfit>=0?'↑':'↓'}</div>
+    </div>
+
+    <div style="border-top:1px solid var(--border);padding:1rem 1.25rem">
+      <div style="font-size:.82rem;font-weight:600;color:var(--gold);margin-bottom:.75rem">🌙 Official 1-Day Calculated Closeouts (${rangeCloseouts.length})</div>
+      ${rangeCloseouts.length===0?`<p style="color:var(--text3);font-size:.82rem">No official day closeouts recorded in this date range.</p>`:`
+      <div style="overflow-x:auto;margin-bottom:1rem">
+        <table style="font-size:.78rem;width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);color:var(--text2);text-align:left">
+              <th style="padding:.4rem">Closeout Date & Time</th>
+              <th style="padding:.4rem">Closeout ID</th>
+              <th style="padding:.4rem">Sales</th>
+              <th style="padding:.4rem">Expenses</th>
+              <th style="padding:.4rem">Net Profit</th>
+              <th style="padding:.4rem">Cancelled</th>
+              <th style="padding:.4rem;text-align:right">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rangeCloseouts.map(c=>`<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:.4rem;color:var(--text1);font-weight:600">${fmtDate(c.date)} ${c.time||''}</td>
+              <td style="padding:.4rem;color:var(--blue);font-size:.75rem">${c.id}</td>
+              <td style="padding:.4rem;color:var(--gold);font-weight:700">Rs ${(c.sales||0).toLocaleString()}</td>
+              <td style="padding:.4rem;color:var(--red)">Rs ${(c.expenses||0).toLocaleString()}</td>
+              <td style="padding:.4rem;color:${(c.profit||0)>=0?'var(--green)':'var(--red)'};font-weight:700">Rs ${(c.profit||0).toLocaleString()}</td>
+              <td style="padding:.4rem;color:var(--amber)">${c.cancelledCount||0} (Rs ${(c.cancelledCost||0).toLocaleString()})</td>
+              <td style="padding:.4rem;text-align:right">
+                <button class="btn-sm btn-gold" style="font-size:.7rem;padding:.2rem .5rem" onclick="reprintCloseoutReceipt('${c.id}')">🖨 Reprint</button>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`}
     </div>
 
     <div style="border-top:1px solid var(--border);padding:1rem 1.25rem">
