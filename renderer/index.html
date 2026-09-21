@@ -2680,16 +2680,17 @@ function renderBilling(){
     <div>
       <div class="bill-preview" id="bill-display">
         <div class="bill-header">
-          <div class="bill-logo">🍕 Dogar Sajji</div>
-          <div style="font-size:.78rem;color:var(--text2);margin-top:.25rem">Taste the Best Crust in Town</div>
-          <div style="font-size:.72rem;color:var(--text3);margin-top:.1rem">📞 0303-5558000 · 0314-4421315</div>
-          <div style="font-size:.68rem;color:var(--text3);margin-top:.1rem">Food Street Near Britian Intl School, Garden Road Muzaffargarh</div>
+          <div class="bill-logo">🍗 Dogar Sajji</div>
+          <div style="font-size:.78rem;color:var(--text2);margin-top:.25rem">Taste the Best Sajji in Town</div>
+          <div style="font-size:.72rem;color:var(--text3);margin-top:.1rem">📞 0300-1863406 · 0343-4763406</div>
+          <div style="font-size:.68rem;color:var(--text3);margin-top:.1rem">In Front of Govt Graduate College, Multan Road, Muzaffargarh</div>
           <div style="font-size:.72rem;color:var(--text3);margin-top:.25rem">${new Date().toLocaleString('en-PK')}</div>
         </div>
         <p style="color:var(--text3);text-align:center;font-size:.85rem;margin:1.5rem 0">Generate a bill to preview</p>
       </div>
-      <div style="display:flex;gap:.5rem;margin-top:1rem;justify-content:center">
-        <button class="print-btn" style="width:100%; padding:.85rem; font-size:1rem; font-weight:700" onclick="printBill()">🖨️ Print Receipt & Settle</button>
+      <div style="display:flex;gap:.5rem;margin-top:1rem;justify-content:center;flex-wrap:wrap">
+        <button type="button" class="btn-outline" style="flex:1; min-width:140px; padding:.85rem; font-size:.92rem; font-weight:700; border:2px solid var(--blue); color:var(--blue); background:rgba(74,144,217,0.12); border-radius:var(--radius2); cursor:pointer;" onclick="printCustomerInvoice()">📄 Customer Invoice</button>
+        <button type="button" class="print-btn" style="flex:1.2; min-width:170px; padding:.85rem; font-size:.92rem; font-weight:700" onclick="printBill()">🖨️ Print Receipt & Settle</button>
       </div>
     </div>
   </div>`;
@@ -2747,9 +2748,9 @@ function generateMergedBill(billKey,type,quiet=false){
     <div class="bill-header">
       <img src="${appLogoUrl}" style="height:90px;width:auto;object-fit:contain;margin-bottom:.4rem;filter:drop-shadow(0 4px 10px rgba(255,200,0,0.3))" alt="Dogar Sajji Logo">
       <div class="bill-logo">Dogar Sajji</div>
-      <div style="font-size:.78rem;color:var(--text2);margin-top:.25rem">Taste the Best Crust in Town</div>
-      <div style="font-size:.7rem;color:var(--text3);margin-top:.1rem">📞 0303-5558000 · 0314-4421315</div>
-      <div style="font-size:.66rem;color:var(--text3);margin-top:.1rem">Food Street Near Britian International School, Garden Road Muzaffargarh</div>
+      <div style="font-size:.78rem;color:var(--text2);margin-top:.25rem">Taste the Best Sajji in Town</div>
+      <div style="font-size:.7rem;color:var(--text3);margin-top:.1rem">📞 0300-1863406 · 0343-4763406</div>
+      <div style="font-size:.66rem;color:var(--text3);margin-top:.1rem">In Front of Govt Graduate College, Multan Road, Muzaffargarh</div>
       <div style="font-size:.72rem;color:var(--text3);margin-top:.25rem">${new Date().toLocaleString('en-PK')}</div>
       <div style="font-size:.85rem;color:var(--gold);margin-top:.5rem;font-weight:600">${headerLabel} · ${group.length>1?'Merged Bill':'Bill #'+group[0].id}</div>
       ${type==='Delivery'?`<div style="font-size:.72rem;color:var(--text2);margin-top:.3rem">📞 ${custPhone}${custAddress?' · '+custAddress:''}</div>`:''}
@@ -2766,7 +2767,7 @@ function generateMergedBill(billKey,type,quiet=false){
       <div class="bill-row" style="margin-top:.5rem;padding-top:.4rem;border-top:1px dashed var(--border)"><span>Cash Received</span><span>Rs ${cashReceived.toLocaleString()}</span></div>
       <div class="bill-row" style="color:var(--green);font-weight:700"><span>Change Return</span><span>Rs ${changeReturn.toLocaleString()}</span></div>
     `:''}
-    <div style="text-align:center;margin-top:1rem;font-size:.75rem;color:var(--text3)">Thank you for dining with us!<br>Please visit again 🙏</div>`;
+    <div style="text-align:center;margin-top:1rem;font-size:.75rem;color:var(--text3)">Thank you for dining with us!<br>Please visit again 🙏<div style="font-size:.68rem;color:var(--text3);margin-top:.4rem;font-weight:600">Developer Contact: 03255775600</div></div>`;
   }
   if(!quiet){
     toast(group.length>1?`${group.length} bills merged & generated ✓`:'Bill generated!');
@@ -2813,18 +2814,13 @@ function oneClickPrintAndSettle(billKey, type) {
   printBill();
 }
 
-function printBill(){
-  const billDisplay = document.getElementById('bill-display');
-  if(!billDisplay || !currentBillKey){
-    toast('Please generate a bill first','error'); return;
-  }
-
-  // Gather bill data
+function buildReceiptHtml(isCustomerInvoice = false) {
   let orderIds = currentBillOrderIds;
-  if(orderIds.length === 0){ toast('No bill to print','error'); return; }
+  if(!orderIds || orderIds.length === 0) return null;
 
   const group = orderIds.map(id=>orders.find(o=>o.id===id)).filter(Boolean);
-  if(group.length === 0){ toast('No bill to print','error'); return; }
+  if(group.length === 0) return null;
+
   const type = currentBillOrderType;
   const headerLabel = type==='Dine-in' ? `Table ${currentBillKey}` : type;
   const custPhone = group[0].customerPhone||'';
@@ -2851,9 +2847,12 @@ function printBill(){
   const servedBy = group[0]?.waiter || currentUser;
   const orderTypeLabel = type==='Dine-in' ? 'DINE IN' : type.toUpperCase();
 
-  const htmlContent = `<!DOCTYPE html><html><head>
+  const docTitle = isCustomerInvoice ? `Customer Invoice - ${headerLabel}` : `Receipt - ${headerLabel}`;
+  const tagLabel = isCustomerInvoice ? `CUSTOMER INVOICE (UNPAID)` : `SALES RECEIPT`;
+
+  return `<!DOCTYPE html><html><head>
   <meta charset="UTF-8">
-  <title>Receipt - ${headerLabel}</title>
+  <title>${docTitle}</title>
   <style>
     @page { size: 80mm portrait; margin: 0; }
     * { margin:0; padding:0; box-sizing:border-box; }
@@ -2880,7 +2879,7 @@ function printBill(){
     }
     .logo-main { font-size: 22px; font-weight: 900; letter-spacing: 3px; line-height: 1.1; }
     .logo-sub  { font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform:uppercase; margin-top:2px; }
-    .logo-tag  { font-size: 9px; font-weight: 900; letter-spacing: 3px; margin-top: 4px; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 2px 0; }
+    .logo-tag  { font-size: 9px; font-weight: 900; letter-spacing: 2px; margin-top: 4px; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 2px 0; }
     .logo-info { font-size: 10px; font-weight: 700; margin-top: 3px; }
     .logo-addr { font-size: 9px;  font-weight: 700; margin-top: 2px; }
 
@@ -2906,7 +2905,7 @@ function printBill(){
     tr.hdr-row td { font-size: 10px; font-weight: 900; letter-spacing: 1px; border-bottom: 2px solid #000; padding-bottom: 3px; }
 
     .footer { text-align:center; margin-top:8px; }
-    .disclaimer { font-size: 8px; font-weight: 700; color: #444; margin-top: 6px; }
+    .disclaimer { font-size: 8px; font-weight: 700; color: #444; margin-top: 4px; }
     @media print { button { display:none; } }
   </style>
   </head><body>
@@ -2914,20 +2913,20 @@ function printBill(){
   <div class="logo-box">
     <img src="${appLogoUrl}" style="max-height:92px;width:auto;margin:0 auto 6px auto;display:block;box-shadow:none" alt="Dogar Sajji Logo">
     <div class="logo-main">Dogar Sajji</div>
-    <div class="logo-sub">Taste the Best Crust in Town</div>
-    <div class="logo-tag">SALES RECEIPT</div>
-    <div class="logo-info">&#128222; 0303-5558000 / 0314-4421315</div>
-    <div class="logo-addr">Food Street Near Britian Intl School, Garden Road Muzaffargarh</div>
+    <div class="logo-sub">Taste the Best Sajji in Town</div>
+    <div class="logo-tag">${tagLabel}</div>
+    <div class="logo-info">&#128222; 0300-1863406 / 0343-4763406</div>
+    <div class="logo-addr">In Front of Govt Graduate College, Multan Road, Muzaffargarh</div>
   </div>
 
-  <div class="meta-row"><span>Receipt #</span><span>${receiptNo}</span></div>
+  <div class="meta-row"><span>${isCustomerInvoice ? 'Invoice #' : 'Receipt #'}</span><span>${receiptNo}</span></div>
   <div class="meta-row"><span>Date</span><span>${now}</span></div>
   <div class="meta-row"><span>Order Type</span><span>${orderTypeLabel}${type==='Dine-in'?' · T'+currentBillKey:''}</span></div>
   <div class="meta-row"><span>Served By</span><span>${servedBy}</span></div>
   <div class="divider-solid"></div>
   ${type==='Delivery'?`<div class="center" style="font-size:10px;font-weight:bold;margin-bottom:3px">📞 ${custPhone}${custAddress?' — '+custAddress:''}</div>`:''}
   ${group.length>1?`<div class="center" style="font-size:10px;font-weight:bold;margin-bottom:3px">${billRef} &nbsp;|&nbsp; Merged: ${group.map(o=>o.id).join(' + ')}</div>`:''}
-  <div class="center" style="font-size:11px;font-weight:900;margin-bottom:4px">Payment: ${paymentMethod}</div>
+  ${!isCustomerInvoice ? `<div class="center" style="font-size:11px;font-weight:900;margin-bottom:4px">Payment: ${paymentMethod}</div>` : `<div class="center" style="font-size:10px;font-weight:900;margin-bottom:4px;border:1px dashed #000;padding:2px">* UNPAID INVOICE (ESTIMATE) *</div>`}
   <div class="divider"></div>
 
   <table class="receipt-table">
@@ -2970,7 +2969,7 @@ function printBill(){
       <td class="col-name">TOTAL</td>
       <td class="col-amt">Rs ${total.toLocaleString()}</td>
     </tr>
-    ${cashReceived?`
+    ${!isCustomerInvoice && cashReceived?`
     <tr><td colspan="3"><div class="divider" style="margin:4px 0"></div></td></tr>
     <tr>
       <td class="col-no"></td>
@@ -2991,35 +2990,78 @@ function printBill(){
     <div style="font-size:12px;font-weight:900;margin-bottom:2px">Thank you for dining with us!</div>
     <div style="font-size:11px;font-weight:bold;margin-bottom:4px">Please visit again &#x1F64F;</div>
     <div style="font-size:9px;font-weight:bold;letter-spacing:1px">* * * Dogar Sajji * * *</div>
-    <div class="disclaimer">This is a computer generated receipt.</div>
+    <div class="disclaimer" style="font-size:9.5px;font-weight:bold;color:#000;margin-top:4px">Developer Contact: 03255775600</div>
+    <div class="disclaimer">This is a computer generated ${isCustomerInvoice ? 'customer invoice' : 'receipt'}.</div>
   </div>
   </body></html>`;
+}
+
+function printCustomerInvoice() {
+  const billDisplay = document.getElementById('bill-display');
+  if(!billDisplay || !currentBillKey){
+    toast('Please generate a bill first','error'); return;
+  }
+
+  const htmlContent = buildReceiptHtml(true); // true = Customer Invoice
+  if (!htmlContent) {
+    toast('No bill items to print', 'error');
+    return;
+  }
 
   const printerDevice = localStorage.getItem('hfc_printer_device') || '';
   const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
 
   if (window.api && window.api.printReceipt) {
-    toast('Printing receipt...', 'info');
+    toast('Printing Customer Invoice...', 'info');
+    window.api.printReceipt(htmlContent, {
+      silent: silentPrint,
+      deviceName: printerDevice || undefined
+    }).then(res => {
+      toast('Customer Invoice printed ✓');
+    }).catch(() => {
+      fallbackPrintWindow(htmlContent, false);
+    });
+  } else {
+    fallbackPrintWindow(htmlContent, false);
+  }
+}
+
+function printBill(){
+  const billDisplay = document.getElementById('bill-display');
+  if(!billDisplay || !currentBillKey){
+    toast('Please generate a bill first','error'); return;
+  }
+
+  const htmlContent = buildReceiptHtml(false); // false = Final Sales Receipt
+  if (!htmlContent) {
+    toast('No bill to print','error'); return;
+  }
+
+  const printerDevice = localStorage.getItem('hfc_printer_device') || '';
+  const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
+
+  if (window.api && window.api.printReceipt) {
+    toast('Printing final receipt & settling...', 'info');
     window.api.printReceipt(htmlContent, {
       silent: silentPrint,
       deviceName: printerDevice || undefined
     }).then(res => {
       if (res && res.success) {
-        toast('Receipt printed directly ✓');
+        toast('Final receipt printed ✓');
       } else {
-        toast('Direct thermal print finished ✓');
+        toast('Thermal print completed ✓');
       }
     }).catch(() => {
-      fallbackPrintWindow(htmlContent);
+      fallbackPrintWindow(htmlContent, true);
     });
   } else {
-    fallbackPrintWindow(htmlContent);
+    fallbackPrintWindow(htmlContent, true);
   }
 
   finalizeSale();
 }
 
-async function fallbackPrintWindow(htmlContent) {
+async function fallbackPrintWindow(htmlContent, finalize = true) {
   const printerDevice = localStorage.getItem('hfc_printer_device') || '';
   try {
     const res = await fetch('/api/print', {
@@ -3028,7 +3070,8 @@ async function fallbackPrintWindow(htmlContent) {
       body: JSON.stringify({ html: htmlContent, deviceName: printerDevice, silent: true })
     });
     if (res.ok) {
-      toast('Receipt printed directly ✓');
+      toast('Printed directly ✓');
+      if (finalize) finalizeSale();
       return;
     }
   } catch (e) {}
@@ -3056,7 +3099,8 @@ async function fallbackPrintWindow(htmlContent) {
       iframe.contentWindow.print();
     } catch (e) {}
   }, 200);
-  toast('Receipt sent to printer ✓');
+  toast('Sent to printer ✓');
+  if (finalize) finalizeSale();
 }
 
 // ── DATABASE BACKUP ──

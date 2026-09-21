@@ -76,7 +76,7 @@ function registerIpcHandlers(db) {
         const today = new Date().toISOString().split('T')[0];
         const { canceled, filePath } = await dialog.showSaveDialog({
           title: "Backup Dogar Sajji Database",
-          defaultPath: `edens-crust-backup-${today}.db`,
+          defaultPath: `dogar-sajji-backup-${today}.db`,
           filters: [
             { name: 'SQLite Database', extensions: ['db', 'sqlite'] },
             { name: 'All Files', extensions: ['*'] }
@@ -95,7 +95,7 @@ function registerIpcHandlers(db) {
       try {
         const { canceled, filePath } = await dialog.showSaveDialog({
           title: 'Save CSV Report',
-          defaultPath: defaultName || 'edens-crust-report.csv',
+          defaultPath: defaultName || 'dogar-sajji-report.csv',
           filters: [
             { name: 'CSV Document (*.csv)', extensions: ['csv'] },
             { name: 'All Files', extensions: ['*'] }
