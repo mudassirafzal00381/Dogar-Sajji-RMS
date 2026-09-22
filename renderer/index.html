@@ -912,6 +912,19 @@ let activeSection = '';
 // Tracks unpaid bills: { tableId: { orderId, items, total, time } }
 let unpaidBills = {};
 
+// ── LOCAL DATE HELPERS (Prevents UTC timezone day-shift discrepancies) ──
+function getLocalDateStr(d = new Date()) {
+  const dt = (typeof d === 'string' || typeof d === 'number') ? new Date(d) : d;
+  const year = dt.getFullYear();
+  const month = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getTodayDateStr() {
+  return getLocalDateStr(new Date());
+}
+
 // ── USERS & AUTHENTICATION ──
 let appUsers = [
   { username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin / Manager' },
@@ -1156,8 +1169,10 @@ function orderLabel(o){
 // ── DASHBOARD ──
 function renderDashboard(){
   try {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const yesterdayStr = new Date(Date.now()-86400000).toISOString().split('T')[0];
+    const todayStr = getTodayDateStr();
+    const yDate = new Date();
+    yDate.setDate(yDate.getDate() - 1);
+    const yesterdayStr = getLocalDateStr(yDate);
     
     const safeSales = Array.isArray(salesLedger) ? salesLedger : [];
     const safeOrders = Array.isArray(orders) ? orders : [];
@@ -1166,15 +1181,16 @@ function renderDashboard(){
     const safeCancelled = Array.isArray(cancelledOrders) ? cancelledOrders : [];
     const safeEmployees = Array.isArray(employees) ? employees : [];
 
-    const totalSales = safeSales.filter(s=>s && s.date===todayStr && !s.closed).reduce((a,s)=>a+(s.total||0),0);
-    const yesterdaySales = safeSales.filter(s=>s && s.date===yesterdayStr).reduce((a,s)=>a+(s.total||0),0);
-    const salesTrend = yesterdaySales>0 ? Math.round((totalSales-yesterdaySales)/yesterdaySales*100) : null;
-    const ordersToday = safeOrders.length + safeSales.filter(s=>s && s.date===todayStr && !s.closed).length;
-    const pending = safeOrders.filter(o=>o && o.status==='pending').length;
-    const occupied = safeTables.filter(t=>t && t.status==='occupied').length;
-    const lowStock = safeInventory.filter(i=>i && i.stock<i.min);
-    const cancelledToday = safeCancelled.filter(c => c && c.date === todayStr && !c.closed);
-    const lostRevenueToday = cancelledToday.reduce((a, c) => a + (c.cost || 0), 0);
+    const todaySalesList = safeSales.filter(s => s && s.date === todayStr);
+    const totalSales = todaySalesList.reduce((a, s) => a + (Number(s.total) || 0), 0);
+    const yesterdaySales = safeSales.filter(s => s && s.date === yesterdayStr).reduce((a, s) => a + (Number(s.total) || 0), 0);
+    const salesTrend = yesterdaySales > 0 ? Math.round((totalSales - yesterdaySales) / yesterdaySales * 100) : null;
+    const ordersToday = safeOrders.length + todaySalesList.length;
+    const pending = safeOrders.filter(o => o && o.status === 'pending').length;
+    const occupied = safeTables.filter(t => t && t.status === 'occupied').length;
+    const lowStock = safeInventory.filter(i => i && Number(i.stock) < Number(i.min));
+    const cancelledToday = safeCancelled.filter(c => c && c.date === todayStr);
+    const lostRevenueToday = cancelledToday.reduce((a, c) => a + (Number(c.cost) || 0), 0);
 
   return `
   <div class="section-header">
@@ -2154,9 +2170,11 @@ function renderManager(){
   <div class="section-header">
     <div><div class="section-title">Order Board</div><div class="section-sub">${activeOrders.length} active order${activeOrders.length===1?'':'s'} in queue</div></div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-      <button class="btn-sm ${ordersView==='new'?'btn-gold':'btn-outline'}" onclick="goToNewOrder()">🛍️ Take Order</button>
-      <button class="btn-sm ${ordersView==='pay'?'btn-gold':'btn-outline'}" onclick="goToPayOrderView()">💳 Billing & Payment</button>
-      <button class="btn-sm ${ordersView==='board'?'btn-gold':'btn-outline'}" style="font-weight:700" onclick="goToOrderBoard()">📋 Order Board</button>
+      ${currentRole !== 'Admin' ? `
+        <button class="btn-sm ${ordersView==='new'?'btn-gold':'btn-outline'}" onclick="goToNewOrder()">🛍️ Take Order</button>
+        <button class="btn-sm ${ordersView==='pay'?'btn-gold':'btn-outline'}" onclick="goToPayOrderView()">💳 Billing & Payment</button>
+        <button class="btn-sm ${ordersView==='board'?'btn-gold':'btn-outline'}" style="font-weight:700" onclick="goToOrderBoard()">📋 Order Board</button>
+      ` : ''}
       <button class="print-btn" onclick="refreshManagerOrders()">↻ Refresh Orders</button>
     </div>
   </div>
@@ -3842,7 +3860,7 @@ async function finalizeSale(){
     return;
   }
   if(!currentBillKey){toast('No bill generated yet','error');return;}
-  const today=new Date().toISOString().split('T')[0];
+  const today = getTodayDateStr();
   const selectedPayment=document.getElementById('selected-payment')?.textContent?.replace('✓ ','').replace(' selected','').trim()||'Cash';
   const discPct=parseFloat(document.getElementById('discount-pct')?.value)||0;
   const perHeadRate=parseFloat(document.getElementById('per-head-rate')?.value)||0;
@@ -4986,18 +5004,18 @@ async function printEndDaySalesReport() {
 
 function renderFinanceOverview(){
   // ── Live computed stats from real salesLedger & expenseLedger ──
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayDateStr();
   // Week: Mon–Sun of current week
   const now = new Date();
   const dayOfWeek = now.getDay(); // 0=Sun
   const monday = new Date(now); monday.setDate(now.getDate() - (dayOfWeek===0?6:dayOfWeek-1)); monday.setHours(0,0,0,0);
-  const monday_str = monday.toISOString().split('T')[0];
+  const monday_str = getLocalDateStr(monday);
   // Month: first day of current month
   const month_str = today.slice(0,7); // 'YYYY-MM'
 
-  const todaySales  = salesLedger.filter(s=>s.date===today).reduce((a,s)=>a+s.total,0);
-  const weekSales   = salesLedger.filter(s=>s.date>=monday_str&&s.date<=today).reduce((a,s)=>a+s.total,0);
-  const monthSales  = salesLedger.filter(s=>s.date.startsWith(month_str)).reduce((a,s)=>a+s.total,0);
+  const todaySales  = (Array.isArray(salesLedger) ? salesLedger : []).filter(s => s && s.date === today).reduce((a,s) => a + (Number(s.total) || 0), 0);
+  const weekSales   = (Array.isArray(salesLedger) ? salesLedger : []).filter(s => s && s.date >= monday_str && s.date <= today).reduce((a,s) => a + (Number(s.total) || 0), 0);
+  const monthSales  = (Array.isArray(salesLedger) ? salesLedger : []).filter(s => s && s.date && s.date.startsWith(month_str)).reduce((a,s) => a + (Number(s.total) || 0), 0);
 
   // Expenses today: expenseLedger + petty cash
   const expCats={};
