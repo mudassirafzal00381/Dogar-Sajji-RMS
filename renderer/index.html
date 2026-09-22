@@ -3887,22 +3887,28 @@ async function finalizeSale(){
   if (supabaseClient) {
     try {
       if (type === 'Dine-in') {
-        await supabaseClient.from('orders').delete().eq('table_id', billKey);
-        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey));
-        await supabaseClient.from('tables').upsert([{ id: billKey, status: 'available', persons: 0 }]);
+        await supabaseClient.from('orders').delete().eq('table_id', billKey).catch(()=>{});
+        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey)).catch(()=>{});
+        await supabaseClient.from('tables').upsert([{ id: billKey, status: 'available', persons: 0 }]).catch(()=>{});
       } else {
         const delIds = [String(billKey), ...orderIds.map(String)];
-        await supabaseClient.from('orders').delete().in('id', delIds);
-        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey));
+        await supabaseClient.from('orders').delete().in('id', delIds).catch(()=>{});
+        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey)).catch(()=>{});
       }
-      await supabaseClient.from('sales_ledger').upsert([{
+      const slRecord = {
         id: slId, date: today, table_id: type === 'Dine-in' ? billKey : null,
         items, total: Number(total || 0), payment: selectedPayment,
         waiter: group[0]?.waiter || currentUser, discount: discPct, per_head: perHead,
         order_type: type, customer_phone: group[0]?.customerPhone || '',
         customer_address: group[0]?.customerAddress || '',
         closed: 0, closeout_id: ''
-      }]);
+      };
+      const slRes = await supabaseClient.from('sales_ledger').upsert([slRecord]);
+      if (slRes && slRes.error) {
+        delete slRecord.closed;
+        delete slRecord.closeout_id;
+        await supabaseClient.from('sales_ledger').upsert([slRecord]).catch(()=>{});
+      }
     } catch(e) { console.warn('Supabase cleanup warning:', e); }
   }
 
@@ -5894,14 +5900,34 @@ async function saveToLocal(force = false) {
     console.warn('⚠️ Prevented saveToLocal: Initial data load is not complete yet.');
     return;
   }
-  try {
-    const currentSupConfig = {
-      url: localStorage.getItem('dogar_supabase_url') || window.SUPABASE_URL || '',
-      key: localStorage.getItem('dogar_supabase_key') || window.SUPABASE_KEY || '',
-    };
 
-    // 1. Electron SQLite (Desktop app mode)
-    if (window.api && window.api.saveOrders) {
+  // 1. ALWAYS persist to browser LocalStorage IMMEDIATELY (guarantees persistence on Vercel & web refreshes)
+  try {
+    localStorage.setItem('dogar_web_inventory', JSON.stringify(inventory || []));
+    localStorage.setItem('dogar_web_employees', JSON.stringify(employees || []));
+    localStorage.setItem('dogar_web_petty_cash', JSON.stringify(pettyCash || []));
+    localStorage.setItem('dogar_web_sales_ledger', JSON.stringify(salesLedger || []));
+    localStorage.setItem('dogar_web_expense_ledger', JSON.stringify(expenseLedger || []));
+    localStorage.setItem('dogar_web_menu_items', JSON.stringify(menuItems || []));
+    localStorage.setItem('dogar_web_menu_cats', JSON.stringify(menuCategories || []));
+    localStorage.setItem('dogar_web_deals', JSON.stringify(deals || []));
+    localStorage.setItem('dogar_web_tables', JSON.stringify(tables || []));
+    localStorage.setItem('dogar_web_orders', JSON.stringify(orders || []));
+    localStorage.setItem('dogar_web_unpaid_bills', JSON.stringify(unpaidBills || {}));
+    localStorage.setItem('dogar_web_app_users', JSON.stringify(appUsers || []));
+    localStorage.setItem('dogar_web_cancelled_orders', JSON.stringify(cancelledOrders || []));
+    localStorage.setItem('dogar_web_daily_closeouts', JSON.stringify(dailyCloseouts || []));
+    localStorage.setItem('dogar_web_next_petty_id', String(nextPettyId || 1));
+  } catch(e) { console.warn('LocalStorage save error:', e); }
+
+  const currentSupConfig = {
+    url: localStorage.getItem('dogar_supabase_url') || window.SUPABASE_URL || '',
+    key: localStorage.getItem('dogar_supabase_key') || window.SUPABASE_KEY || '',
+  };
+
+  // 2. Electron SQLite (Desktop app mode)
+  if (window.api && window.api.saveOrders) {
+    try {
       await Promise.all([
         window.api.saveInventory(inventory),
         window.api.saveEmployees(employees),
@@ -5920,20 +5946,24 @@ async function saveToLocal(force = false) {
         window.api.saveSettings({ nextPettyId, supabaseConfig: currentSupConfig }),
       ]);
       console.log('💾 Data saved to local SQLite database');
+    } catch(err) {
+      console.warn('SQLite save warning:', err);
     }
+  }
 
-    // 2. Central Backend REST API (Web Browser Profile A / Profile B / Mobile)
+  // 3. Central Backend REST API (Web Browser Profile A / Profile B / Mobile)
+  try {
     await apiCall('save-all', 'POST', {
       inventory, employees, pettyCash, salesLedger, expenseLedger,
       menuItems, menuCategories, deals, tables, orders, unpaidBills, appUsers, cancelledOrders, dailyCloseouts,
       settings: { nextPettyId, supabaseConfig: currentSupConfig }
     });
+  } catch(e) {}
 
-    // 3. Supabase Cloud DB (Web app mode / Cross-Device Sync)
-    if (supabaseClient) {
-      const promises = [];
-
-      // Orders: sync active orders & clean settled/removed orders from Supabase
+  // 4. Supabase Cloud DB (Web app mode / Cross-Device Sync)
+  if (supabaseClient) {
+    try {
+      // Orders
       const activeOrderIds = (orders || []).map(o => String(o.id));
       if (activeOrderIds.length > 0) {
         const orderRecords = orders.map(o => ({
@@ -5950,25 +5980,24 @@ async function saveToLocal(force = false) {
           customer_phone: o.customerPhone || '',
           customer_address: o.customerAddress || '',
         }));
-        promises.push(supabaseClient.from('orders').upsert(orderRecords));
+        await supabaseClient.from('orders').upsert(orderRecords).catch(e => console.warn('Supabase orders save:', e));
       } else {
-        promises.push(supabaseClient.from('orders').delete().neq('id', '___NONE___'));
+        await supabaseClient.from('orders').delete().neq('id', '___NONE___').catch(e => console.warn('Supabase orders clear:', e));
       }
 
       // Tables
       if (tables && tables.length > 0) {
-        const tableRecords = tables.map(t => ({
+        await supabaseClient.from('tables').upsert(tables.map(t => ({
           id: t.id,
           status: t.status || 'available',
           persons: t.persons || 0,
           seats: t.seats || 4,
           reserved_for: t.reservedFor || '',
           reserved_time: t.reservedTime || '',
-        }));
-        promises.push(supabaseClient.from('tables').upsert(tableRecords));
+        }))).catch(e => console.warn('Supabase tables save:', e));
       }
 
-      // Unpaid Bills: sync active bills & clear settled bills from Supabase
+      // Unpaid Bills
       const activeBillKeys = Object.keys(unpaidBills || {});
       if (activeBillKeys.length > 0) {
         const billRecords = activeBillKeys.map(key => ({
@@ -5978,126 +6007,133 @@ async function saveToLocal(force = false) {
           time: unpaidBills[key].time || '',
           add_on_tickets: unpaidBills[key].addOnTickets || 0,
         }));
-        promises.push(supabaseClient.from('unpaid_bills').upsert(billRecords));
+        await supabaseClient.from('unpaid_bills').upsert(billRecords).catch(e => console.warn('Supabase unpaid_bills save:', e));
       } else {
-        promises.push(supabaseClient.from('unpaid_bills').delete().neq('bill_key', '___NONE___'));
+        await supabaseClient.from('unpaid_bills').delete().neq('bill_key', '___NONE___').catch(e => console.warn('Supabase unpaid_bills clear:', e));
       }
 
       // Menu Categories
       if (menuCategories && menuCategories.length > 0) {
-        promises.push(supabaseClient.from('menu_categories').upsert(menuCategories.map(c => ({ name: c })), { onConflict: 'name' }));
+        await supabaseClient.from('menu_categories').upsert(menuCategories.map(c => ({ name: c })), { onConflict: 'name' }).catch(e => console.warn('Supabase cats save:', e));
       }
 
       // Menu Items
       if (menuItems && menuItems.length > 0) {
-        promises.push(supabaseClient.from('menu_items').upsert(menuItems.map(m => ({
+        await supabaseClient.from('menu_items').upsert(menuItems.map(m => ({
           id: m.id, name: m.name, cat: m.cat, price: m.price || 0, discount: m.discount || 0,
           desc_text: m.desc || '', img: m.img || '🍕', available: m.available !== false, variants: m.variants || []
-        }))));
+        }))).catch(e => console.warn('Supabase items save:', e));
       }
 
       // Deals
       if (deals && deals.length > 0) {
-        promises.push(supabaseClient.from('deals').upsert(deals.map(d => ({
+        await supabaseClient.from('deals').upsert(deals.map(d => ({
           id: d.id, name: d.name, category: d.category, items: d.items || [], price: d.price || 0, available: d.available !== false
-        }))));
+        }))).catch(e => console.warn('Supabase deals save:', e));
       }
 
       // Inventory
       if (inventory && inventory.length > 0) {
-        promises.push(supabaseClient.from('inventory').upsert(inventory.map(i => ({
+        await supabaseClient.from('inventory').upsert(inventory.map(i => ({
           id: i.id, item: i.item || i.name || '', unit: i.unit || '', stock: i.stock || 0, min: i.min || 0, price: i.price || 0, last: i.last || ''
-        }))));
+        }))).catch(e => console.warn('Supabase inv save:', e));
       }
 
       // Employees
       if (employees && employees.length > 0) {
-        promises.push(supabaseClient.from('employees').upsert(employees.map(e => ({
+        await supabaseClient.from('employees').upsert(employees.map(e => ({
           id: e.id, name: e.name, cnic: e.cnic || '', phone: e.phone || '', designation: e.designation || '', salary: e.salary || 0,
           status: e.status || 'Present', address: e.address || '', salary_payments: e.salaryPayments || [], advances: e.advances || [], attendance_log: e.attendanceLog || []
-        }))));
+        }))).catch(e => console.warn('Supabase emp save:', e));
       }
 
-      // Petty Cash
+      // Petty Cash (with fallback if closed column is not yet in Supabase schema)
       if (pettyCash && pettyCash.length > 0) {
-        promises.push(supabaseClient.from('petty_cash').upsert(pettyCash.map(p => ({
+        const pcWithClose = pettyCash.map(p => ({
           id: p.id, name: p.name || '', category: p.category || 'Misc', amount: Number(p.amount || 0), date: p.date || '', notes: p.notes || '',
           closed: p.closed ? 1 : 0, closeout_id: p.closeoutId || ''
-        }))));
+        }));
+        const pcRes = await supabaseClient.from('petty_cash').upsert(pcWithClose);
+        if (pcRes && pcRes.error) {
+          const pcWithoutClose = pettyCash.map(p => ({
+            id: p.id, name: p.name || '', category: p.category || 'Misc', amount: Number(p.amount || 0), date: p.date || '', notes: p.notes || ''
+          }));
+          await supabaseClient.from('petty_cash').upsert(pcWithoutClose).catch(e => console.warn('Supabase petty cash fallback save:', e));
+        }
       }
 
-      // Sales Ledger
+      // Sales Ledger (with fallback if closed column is not yet in Supabase schema)
       if (salesLedger && salesLedger.length > 0) {
-        promises.push(supabaseClient.from('sales_ledger').upsert(salesLedger.map(s => ({
+        const salesWithClose = salesLedger.map(s => ({
           id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: Number(s.total || 0),
           payment: s.payment || '', waiter: s.waiter || '', discount: Number(s.discount || 0), per_head: Number(s.perHead || 0),
           order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || '',
           closed: s.closed ? 1 : 0, closeout_id: s.closeoutId || ''
-        }))));
+        }));
+        const salesRes = await supabaseClient.from('sales_ledger').upsert(salesWithClose);
+        if (salesRes && salesRes.error) {
+          const salesWithoutClose = salesLedger.map(s => ({
+            id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: Number(s.total || 0),
+            payment: s.payment || '', waiter: s.waiter || '', discount: Number(s.discount || 0), per_head: Number(s.perHead || 0),
+            order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || ''
+          }));
+          await supabaseClient.from('sales_ledger').upsert(salesWithoutClose).catch(e => console.warn('Supabase sales fallback save:', e));
+        }
       }
 
       // Expense Ledger
       if (expenseLedger && expenseLedger.length > 0) {
-        promises.push(supabaseClient.from('expense_ledger').upsert(expenseLedger.map(e => ({
+        await supabaseClient.from('expense_ledger').upsert(expenseLedger.map(e => ({
           date: e.date || '', category: e.category || '', amount: Number(e.amount || 0), description: e.description || '', meta: e.meta || {}
-        }))));
+        }))).catch(e => console.warn('Supabase exp save:', e));
       }
 
-      // Cancelled Orders
+      // Cancelled Orders (with fallback if closed column is not yet in Supabase schema)
       if (cancelledOrders && cancelledOrders.length > 0) {
-        promises.push(supabaseClient.from('cancelled_orders').upsert(cancelledOrders.map(c => ({
+        const canWithClose = cancelledOrders.map(c => ({
           id: String(c.id), date: c.date || '', time: c.time || '', order_id: String(c.orderId || ''),
           table_id: String(c.table || ''), order_type: c.orderType || 'Dine-in', items: c.items || [],
           cost: Number(c.cost || 0), waiter: c.waiter || '', cancel_type: c.cancelType || 'Partial',
           closed: c.closed ? 1 : 0, closeout_id: c.closeoutId || ''
-        }))));
+        }));
+        const canRes = await supabaseClient.from('cancelled_orders').upsert(canWithClose);
+        if (canRes && canRes.error) {
+          const canWithoutClose = cancelledOrders.map(c => ({
+            id: String(c.id), date: c.date || '', time: c.time || '', order_id: String(c.orderId || ''),
+            table_id: String(c.table || ''), order_type: c.orderType || 'Dine-in', items: c.items || [],
+            cost: Number(c.cost || 0), waiter: c.waiter || '', cancel_type: c.cancelType || 'Partial'
+          }));
+          await supabaseClient.from('cancelled_orders').upsert(canWithoutClose).catch(e => console.warn('Supabase cancel fallback save:', e));
+        }
       }
 
       // App Users
       if (appUsers && appUsers.length > 0) {
-        promises.push(supabaseClient.from('app_users').upsert(appUsers.map(u => ({
+        await supabaseClient.from('app_users').upsert(appUsers.map(u => ({
           username: u.username, password: u.password, role: u.role || 'Admin', name: u.name || ''
-        }))).catch(e => console.warn('Supabase app_users save warning:', e)));
+        }))).catch(e => console.warn('Supabase app_users save warning:', e));
       }
 
       // Daily Closeouts
       if (dailyCloseouts && dailyCloseouts.length > 0) {
-        promises.push(supabaseClient.from('daily_closeouts').upsert(dailyCloseouts.map(c => ({
+        await supabaseClient.from('daily_closeouts').upsert(dailyCloseouts.map(c => ({
           id: String(c.id), date: c.date || '', time: c.time || '', total_sales: c.totalSales || 0,
           sales_count: c.salesCount || 0, total_expenses: c.totalExpenses || 0, total_profit: c.totalProfit || 0,
           total_cancelled_cost: c.totalCancelledCost || 0, cancelled_count: c.cancelledCount || 0,
           closed_by: c.closedBy || '', timestamp: c.timestamp || Date.now()
-        }))).catch(e => console.warn('Supabase daily_closeouts save warning:', e)));
+        }))).catch(e => console.warn('Supabase daily_closeouts save warning:', e));
       }
 
       // Settings
-      promises.push(supabaseClient.from('settings').upsert([
+      await supabaseClient.from('settings').upsert([
         { key: 'nextPettyId', value: { nextPettyId } }
-      ]).catch(e => console.warn('Supabase settings save warning:', e)));
+      ]).catch(e => console.warn('Supabase settings save warning:', e));
 
-      await Promise.all(promises);
       console.log('☁️ Synced all tables to Supabase Cloud DB ✓');
+    } catch(err) {
+      console.warn('Supabase sync warning:', err);
     }
-
-    // 4. Always update Web Browser LocalStorage as immediate fallback (for Vercel & Web refreshes)
-    try {
-      localStorage.setItem('dogar_web_inventory', JSON.stringify(inventory || []));
-      localStorage.setItem('dogar_web_employees', JSON.stringify(employees || []));
-      localStorage.setItem('dogar_web_petty_cash', JSON.stringify(pettyCash || []));
-      localStorage.setItem('dogar_web_sales_ledger', JSON.stringify(salesLedger || []));
-      localStorage.setItem('dogar_web_expense_ledger', JSON.stringify(expenseLedger || []));
-      localStorage.setItem('dogar_web_menu_items', JSON.stringify(menuItems || []));
-      localStorage.setItem('dogar_web_menu_cats', JSON.stringify(menuCategories || []));
-      localStorage.setItem('dogar_web_deals', JSON.stringify(deals || []));
-      localStorage.setItem('dogar_web_tables', JSON.stringify(tables || []));
-      localStorage.setItem('dogar_web_orders', JSON.stringify(orders || []));
-      localStorage.setItem('dogar_web_unpaid_bills', JSON.stringify(unpaidBills || {}));
-      localStorage.setItem('dogar_web_app_users', JSON.stringify(appUsers || []));
-      localStorage.setItem('dogar_web_cancelled_orders', JSON.stringify(cancelledOrders || []));
-      localStorage.setItem('dogar_web_daily_closeouts', JSON.stringify(dailyCloseouts || []));
-      localStorage.setItem('dogar_web_next_petty_id', String(nextPettyId || 1));
-    } catch(e) { console.warn('LocalStorage web fallback save:', e); }
-  } catch(e) { console.warn('Database save warning:', e); }
+  }
 }
 
 
@@ -6830,20 +6866,36 @@ async function pushAllDataToCloud() {
 
     // Petty Cash
     if (pettyCash && pettyCash.length > 0) {
-      await supabaseClient.from('petty_cash').upsert(pettyCash.map(p => ({
+      const pcWithClose = pettyCash.map(p => ({
         id: p.id, name: p.name || '', category: p.category || 'Misc', amount: Number(p.amount || 0), date: p.date || '', notes: p.notes || '',
         closed: p.closed ? 1 : 0, closeout_id: p.closeoutId || ''
-      })));
+      }));
+      const pcRes = await supabaseClient.from('petty_cash').upsert(pcWithClose);
+      if (pcRes && pcRes.error) {
+        const pcWithoutClose = pettyCash.map(p => ({
+          id: p.id, name: p.name || '', category: p.category || 'Misc', amount: Number(p.amount || 0), date: p.date || '', notes: p.notes || ''
+        }));
+        await supabaseClient.from('petty_cash').upsert(pcWithoutClose).catch(e => console.warn('Push PC fallback error:', e));
+      }
     }
 
     // Sales Ledger
     if (salesLedger && salesLedger.length > 0) {
-      await supabaseClient.from('sales_ledger').upsert(salesLedger.map(s => ({
+      const slWithClose = salesLedger.map(s => ({
         id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: Number(s.total || 0),
         payment: s.payment || '', waiter: s.waiter || '', discount: Number(s.discount || 0), per_head: Number(s.perHead || 0),
         order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || '',
         closed: s.closed ? 1 : 0, closeout_id: s.closeoutId || ''
-      })));
+      }));
+      const slRes = await supabaseClient.from('sales_ledger').upsert(slWithClose);
+      if (slRes && slRes.error) {
+        const slWithoutClose = salesLedger.map(s => ({
+          id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: Number(s.total || 0),
+          payment: s.payment || '', waiter: s.waiter || '', discount: Number(s.discount || 0), per_head: Number(s.perHead || 0),
+          order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || ''
+        }));
+        await supabaseClient.from('sales_ledger').upsert(slWithoutClose).catch(e => console.warn('Push SL fallback error:', e));
+      }
     }
 
     // Expense Ledger
@@ -6855,12 +6907,21 @@ async function pushAllDataToCloud() {
 
     // Cancelled Orders
     if (cancelledOrders && cancelledOrders.length > 0) {
-      await supabaseClient.from('cancelled_orders').upsert(cancelledOrders.map(c => ({
+      const canWithClose = cancelledOrders.map(c => ({
         id: String(c.id), date: c.date || '', time: c.time || '', order_id: String(c.orderId || ''),
         table_id: String(c.table || ''), order_type: c.orderType || 'Dine-in', items: c.items || [],
         cost: Number(c.cost || 0), waiter: c.waiter || '', cancel_type: c.cancelType || 'Partial',
         closed: c.closed ? 1 : 0, closeout_id: c.closeoutId || ''
-      })));
+      }));
+      const canRes = await supabaseClient.from('cancelled_orders').upsert(canWithClose);
+      if (canRes && canRes.error) {
+        const canWithoutClose = cancelledOrders.map(c => ({
+          id: String(c.id), date: c.date || '', time: c.time || '', order_id: String(c.orderId || ''),
+          table_id: String(c.table || ''), order_type: c.orderType || 'Dine-in', items: c.items || [],
+          cost: Number(c.cost || 0), waiter: c.waiter || '', cancel_type: c.cancelType || 'Partial'
+        }));
+        await supabaseClient.from('cancelled_orders').upsert(canWithoutClose).catch(e => console.warn('Push cancel fallback error:', e));
+      }
     }
 
     // Daily Closeouts
