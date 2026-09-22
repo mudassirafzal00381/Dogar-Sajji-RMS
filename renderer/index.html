@@ -1582,14 +1582,16 @@ async function deleteItem(id){
       if(result && result.ok){ await loadFromServer(); showSection('menu'); toast('Item deleted'); return; }
     }
     menuItems=menuItems.filter(x=>x.id!==id);
-    saveToLocal();
+    await saveToLocal();
     showSection('menu');toast('Item deleted (local)');
   }
 }
 
-function toggleAvail(id){
-  const i=menuItems.find(x=>x.id===id);i.available=!i.available;
-  saveToLocal();
+async function toggleAvail(id){
+  const i=menuItems.find(x=>x.id===id);
+  if(!i) return;
+  i.available=!i.available;
+  await saveToLocal();
   showSection('menu');toast(`${i.name} marked ${i.available?'available':'out of stock'}`);
 }
 
@@ -1598,7 +1600,14 @@ function openAddCategory(){
   <div class="form-full"><label style="font-size:.8rem;color:var(--text2);margin-bottom:.3rem;display:block">Category Name</label><input class="input-field" style="width:100%" id="new-cat" placeholder="e.g. Seafood"></div>
   <div class="modal-footer"><button class="btn-outline" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="addCat()">Add</button></div>`);
 }
-function addCat(){const c=document.getElementById('new-cat').value;if(c){menuCategories.push(c);saveToLocal();closeModal();showSection('menu');toast('Category added!');}}
+async function addCat(){
+  const c=document.getElementById('new-cat').value;
+  if(c){
+    menuCategories.push(c);
+    await saveToLocal();
+    closeModal();showSection('menu');toast('Category added!');
+  }
+}
 
 // ── TABLE MANAGEMENT (Admin) ──
 function openAddTable(){
@@ -1635,7 +1644,7 @@ async function saveNewTable(){
   }
   tables.push({id:idVal,status,persons:0,seats,reservedFor:'',reservedTime:''});
   tables.sort((a,b)=>a.id-b.id);
-  saveToLocal();
+  await saveToLocal();
   closeModal();showSection('menu');toast('Table '+idVal+' added ✓');
 }
 function openEditTable(id){
@@ -1659,23 +1668,23 @@ function openEditTable(id){
     <button class="btn-primary" onclick="saveEditTable(${id})">Save</button>
   </div>`);
 }
-function saveEditTable(id){
+async function saveEditTable(id){
   const t=tables.find(x=>x.id===id);
   if(!t)return;
   t.seats=parseInt(document.getElementById('et-seats').value)||4;
   t.status=document.getElementById('et-status').value;
   t.reservedFor=document.getElementById('et-reservedfor').value;
-  saveToLocal();
+  await saveToLocal();
   closeModal();showSection('menu');toast(`Table ${id} updated ✓`);
 }
-function removeTable(id){
+async function removeTable(id){
   const t=tables.find(x=>x.id===id);
   if(!t)return;
   if(t.status==='occupied'){toast(`Table ${id} is occupied — clear first!`,'error');return;}
   if(confirm(`Remove Table ${id}?`)){
     tables=tables.filter(x=>x.id!==id);
     if(selectedTable===id)selectedTable=null;
-    saveToLocal();
+    await saveToLocal();
     showSection('menu');toast(`Table ${id} removed`);
   }
 }
@@ -4326,13 +4335,13 @@ function renderEmpSalary(){
   </div>`;
 }
 
-function markAttendance(empId,status,date){
+async function markAttendance(empId,status,date){
   const e=employees.find(x=>x.id===empId);if(!e)return;
   const existing=e.attendanceLog.find(l=>l.date===date);
   if(existing)existing.status=status;
   else e.attendanceLog.push({date,status});
   e.status=status;
-  saveToLocal();
+  await saveToLocal();
   showSection('employees');toast(`${e.name} marked ${status}`);
 }
 
@@ -4361,7 +4370,7 @@ function openPaySalary(id){
   <div class="modal-footer"><button class="btn-outline" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="saveSalaryPayment(${id})">Record Payment</button></div>`);
 }
 
-function saveSalaryPayment(id){
+async function saveSalaryPayment(id){
   const e=employees.find(x=>x.id===id);if(!e)return;
   const amount=+document.getElementById('ps-amount').value;
   if(!amount||amount<=0){toast('Enter valid amount','error');return;}
@@ -4371,7 +4380,7 @@ function saveSalaryPayment(id){
   const note=document.getElementById('ps-note').value;
   if(!e.salaryPayments)e.salaryPayments=[];
   e.salaryPayments.push({month,amount,date,method,note});
-  saveToLocal();
+  await saveToLocal();
   closeModal();activeEmpTab='salary';showSection('employees');toast(`Rs ${amount.toLocaleString()} salary recorded for ${e.name} ✓`);
 }
 
@@ -4387,7 +4396,7 @@ function openAdvance(id){
   <div class="modal-footer"><button class="btn-outline" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="saveAdvance(${id})">Record Advance</button></div>`);
 }
 
-function saveAdvance(id){
+async function saveAdvance(id){
   const e=employees.find(x=>x.id===id);if(!e)return;
   const amount=+document.getElementById('adv-amount').value;
   if(!amount||amount<=0){toast('Enter valid amount','error');return;}
@@ -4395,15 +4404,15 @@ function saveAdvance(id){
   const reason=document.getElementById('adv-reason').value||'Advance';
   if(!e.advances)e.advances=[];
   e.advances.push({amount,date,reason,remaining:amount});
-  saveToLocal();
+  await saveToLocal();
   closeModal();activeEmpTab='salary';showSection('employees');toast(`Advance of Rs ${amount.toLocaleString()} recorded for ${e.name}`);
 }
 
-function settleAdvance(empId,date){
+async function settleAdvance(empId,date){
   const e=employees.find(x=>x.id===empId);if(!e)return;
   const adv=e.advances.find(a=>a.date===date&&a.remaining>0);if(!adv)return;
   adv.remaining=0;
-  saveToLocal();
+  await saveToLocal();
   showSection('employees');toast(`Advance settled for ${e.name} ✓`);
 }
 
@@ -4443,7 +4452,7 @@ async function saveEmp(){
     if(result && result.ok){ await loadFromServer(); closeModal(); activeEmpTab='list'; showSection('employees'); toast('Employee added!'); return; }
   }
   employees.push({id:Date.now(),name,cnic:document.getElementById('en-cnic').value,phone,designation,salary,address:document.getElementById('en-addr').value,status:'Present',salaryPayments:[],advances:[],attendanceLog:[]});
-  saveToLocal();
+  await saveToLocal();
   closeModal();activeEmpTab='list';showSection('employees');toast('Employee added ✓');
 }
 
@@ -4457,13 +4466,13 @@ function editEmp(id){
   <div class="modal-footer"><button class="btn-outline" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="saveEditEmp(${id})">Save Changes</button></div>`);
 }
 
-function saveEditEmp(id){
+async function saveEditEmp(id){
   const e=employees.find(x=>x.id===id);if(!e)return;
   e.name=document.getElementById('ee-name').value||e.name;
   e.phone=document.getElementById('ee-phone').value||e.phone;
   e.designation=document.getElementById('ee-des').value;
   e.salary=+document.getElementById('ee-sal').value||e.salary;
-  saveToLocal();
+  await saveToLocal();
   closeModal();showSection('employees');toast('Employee updated ✓');
 }
 
@@ -5445,7 +5454,7 @@ async function addPettyEntry(){
     if(result && result.ok){ await loadFromServer(); toast(name+' — Rs '+amount.toLocaleString()+' added ✓'); showSection('finance'); return; }
   }
   pettyCash.unshift({id:nextPettyId++,name,category:cat,amount,date,notes});
-  saveToLocal();
+  await saveToLocal();
   toast(name+' — Rs '+amount.toLocaleString()+' added ✓');
   showSection('finance');
 }
@@ -5483,7 +5492,7 @@ function editPettyEntry(id){
   </div>`);
 }
 
-function savePettyEdit(id){
+async function savePettyEdit(id){
   const e=pettyCash.find(x=>x.id===id);if(!e)return;
   const name=document.getElementById('epc-name').value.trim();
   const amount=+document.getElementById('epc-amount').value;
@@ -5494,7 +5503,7 @@ function savePettyEdit(id){
   e.amount=amount;
   e.date=document.getElementById('epc-date').value||e.date;
   e.notes=document.getElementById('epc-notes').value.trim();
-  saveToLocal();
+  await saveToLocal();
   closeModal();showSection('finance');toast('Entry updated ✓');
 }
 
@@ -5508,9 +5517,9 @@ function deletePettyEntry(id){
   </div>`);
 }
 
-function confirmDeletePetty(id){
+async function confirmDeletePetty(id){
   pettyCash=pettyCash.filter(x=>x.id!==id);
-  saveToLocal();
+  await saveToLocal();
   closeModal();showSection('finance');toast('Entry deleted');
 }
 
@@ -5939,6 +5948,23 @@ async function saveToLocal(force = false) {
     if (supabaseClient) {
       const promises = [];
 
+      // Helper for resilient Supabase upsert with automatic schema fallback
+      const safeSupabaseUpsert = async (table, records, fallbackRecords) => {
+        if (!records || records.length === 0) return;
+        try {
+          const res = await supabaseClient.from(table).upsert(records);
+          if (res && res.error) {
+            console.warn(`Supabase ${table} primary upsert notice:`, res.error.message);
+            if (fallbackRecords && (res.error.message.includes('column') || res.error.message.includes('schema cache'))) {
+              const res2 = await supabaseClient.from(table).upsert(fallbackRecords);
+              if (res2 && res2.error) console.warn(`Supabase ${table} fallback upsert notice:`, res2.error.message);
+            }
+          }
+        } catch (err) {
+          console.warn(`Supabase ${table} exception:`, err);
+        }
+      };
+
       // Orders: sync active orders & clean settled/removed orders from Supabase
       const activeOrderIds = (orders || []).map(o => String(o.id));
       if (activeOrderIds.length > 0) {
@@ -5957,6 +5983,7 @@ async function saveToLocal(force = false) {
           customer_address: o.customerAddress || '',
         }));
         promises.push(supabaseClient.from('orders').upsert(orderRecords));
+        promises.push(supabaseClient.from('orders').delete().not('id', 'in', `(${activeOrderIds.map(id => `"${id}"`).join(',')})`));
       } else {
         promises.push(supabaseClient.from('orders').delete().neq('id', '___NONE___'));
       }
@@ -5978,13 +6005,14 @@ async function saveToLocal(force = false) {
       const activeBillKeys = Object.keys(unpaidBills || {});
       if (activeBillKeys.length > 0) {
         const billRecords = activeBillKeys.map(key => ({
-          bill_key: key,
+          bill_key: String(key),
           order_id: String(unpaidBills[key].orderId || key),
           items: unpaidBills[key].items || [],
           time: unpaidBills[key].time || '',
           add_on_tickets: unpaidBills[key].addOnTickets || 0,
         }));
         promises.push(supabaseClient.from('unpaid_bills').upsert(billRecords));
+        promises.push(supabaseClient.from('unpaid_bills').delete().not('bill_key', 'in', `(${activeBillKeys.map(k => `"${k}"`).join(',')})`));
       } else {
         promises.push(supabaseClient.from('unpaid_bills').delete().neq('bill_key', '___NONE___'));
       }
@@ -6000,6 +6028,8 @@ async function saveToLocal(force = false) {
           id: m.id, name: m.name, cat: m.cat, price: m.price || 0, discount: m.discount || 0,
           desc_text: m.desc || '', img: m.img || '🍕', available: m.available !== false, variants: m.variants || []
         }))));
+        const activeMenuIds = menuItems.map(m => m.id);
+        promises.push(supabaseClient.from('menu_items').delete().not('id', 'in', `(${activeMenuIds.join(',')})`));
       }
 
       // Deals
@@ -6007,13 +6037,19 @@ async function saveToLocal(force = false) {
         promises.push(supabaseClient.from('deals').upsert(deals.map(d => ({
           id: d.id, name: d.name, category: d.category, items: d.items || [], price: d.price || 0, available: d.available !== false
         }))));
+        const activeDealIds = deals.map(d => d.id);
+        promises.push(supabaseClient.from('deals').delete().not('id', 'in', `(${activeDealIds.join(',')})`));
       }
 
       // Inventory
       if (inventory && inventory.length > 0) {
         promises.push(supabaseClient.from('inventory').upsert(inventory.map(i => ({
-          id: i.id, item: i.item || i.name || '', unit: i.unit || '', stock: i.stock || 0, min: i.min || 0, price: i.price || 0, last: i.last || ''
+          id: i.id, item: i.item || i.name || '', unit: i.unit || '', stock: Number(i.stock ?? i.qty ?? 0), min: Number(i.min ?? i.minQty ?? 0), price: Number(i.price ?? i.cost ?? 0), last: i.last || ''
         }))));
+        const activeInvIds = inventory.map(i => i.id);
+        promises.push(supabaseClient.from('inventory').delete().not('id', 'in', `(${activeInvIds.join(',')})`));
+      } else {
+        promises.push(supabaseClient.from('inventory').delete().gte('id', 0));
       }
 
       // Employees
@@ -6022,24 +6058,11 @@ async function saveToLocal(force = false) {
           id: e.id, name: e.name, cnic: e.cnic || '', phone: e.phone || '', designation: e.designation || '', salary: e.salary || 0,
           status: e.status || 'Present', address: e.address || '', salary_payments: e.salaryPayments || [], advances: e.advances || [], attendance_log: e.attendanceLog || []
         }))));
+        const activeEmpIds = employees.map(e => e.id);
+        promises.push(supabaseClient.from('employees').delete().not('id', 'in', `(${activeEmpIds.join(',')})`));
+      } else {
+        promises.push(supabaseClient.from('employees').delete().gte('id', 0));
       }
-
-      // Helper for resilient Supabase upsert with automatic schema fallback
-      const safeSupabaseUpsert = async (table, records, fallbackRecords) => {
-        if (!records || records.length === 0) return;
-        try {
-          const res = await supabaseClient.from(table).upsert(records);
-          if (res && res.error) {
-            console.warn(`Supabase ${table} primary upsert notice:`, res.error.message);
-            if (fallbackRecords && (res.error.message.includes('column') || res.error.message.includes('schema cache'))) {
-              const res2 = await supabaseClient.from(table).upsert(fallbackRecords);
-              if (res2 && res2.error) console.warn(`Supabase ${table} fallback upsert notice:`, res2.error.message);
-            }
-          }
-        } catch (err) {
-          console.warn(`Supabase ${table} exception:`, err);
-        }
-      };
 
       // Petty Cash
       if (pettyCash && pettyCash.length > 0) {
@@ -6051,6 +6074,10 @@ async function saveToLocal(force = false) {
           id: p.id, name: p.name || '', category: p.category || 'Misc', amount: Number(p.amount || 0), date: p.date || '', notes: p.notes || ''
         }));
         promises.push(safeSupabaseUpsert('petty_cash', pcFull, pcBase));
+        const activePcIds = pettyCash.map(p => p.id);
+        promises.push(supabaseClient.from('petty_cash').delete().not('id', 'in', `(${activePcIds.join(',')})`));
+      } else {
+        promises.push(supabaseClient.from('petty_cash').delete().gte('id', 0));
       }
 
       // Sales Ledger
@@ -6470,8 +6497,7 @@ async function loadFromLocal() {
       }
     }
 
-    // 3. Supabase Cloud Sync (Cloud DB)
-    // Local SQLite / Central REST server takes absolute precedence.
+    // 3. Supabase Cloud Sync (Cloud DB - Master Cloud State)
     if (!supabaseClient) initSupabaseFromStorage();
     if (supabaseClient) {
       try {
@@ -6509,143 +6535,116 @@ async function loadFromLocal() {
           supabaseClient.from('settings').select('*').catch(() => ({ data: null }))
         ]);
 
-        if (loadedFromCentral) {
-          // In Desktop App Mode: SQLite is Master. Only populate from cloud if local was empty.
-          if (Array.isArray(cloudOrders) && cloudOrders.length > 0 && orders.length === 0) {
-            orders = cloudOrders.map(r => ({
-              id: r.id, table: r.table_id, items: r.items || [], status: r.status,
-              note: r.note, time: r.time, waiter: r.waiter, isAddOn: !!r.is_add_on, total: Number(r.total || 0),
-              orderType: r.order_type || 'Dine-in', customerPhone: r.customer_phone || '',
-              customerAddress: r.customer_address || '',
-            }));
+        if (Array.isArray(cloudOrders)) {
+          orders = cloudOrders.map(r => ({
+            id: r.id, table: r.table_id != null ? Number(r.table_id) : null, items: r.items || [], status: r.status || 'pending',
+            note: r.note || '', time: r.time || '', waiter: r.waiter || '', isAddOn: !!r.is_add_on, total: Number(r.total || 0),
+            orderType: r.order_type || 'Dine-in', customerPhone: r.customer_phone || '',
+            customerAddress: r.customer_address || '',
+          }));
+        }
+        if (Array.isArray(cloudTables) && cloudTables.length > 0) {
+          tables = cloudTables.map(r => ({
+            id: r.id, status: r.status || 'available', persons: r.persons || 0,
+            seats: r.seats || 4, reservedFor: r.reserved_for || '', reservedTime: r.reserved_time || '',
+          }));
+        }
+        if (Array.isArray(cloudBills)) {
+          const ubObj = {};
+          cloudBills.forEach(r => {
+            ubObj[r.bill_key] = {
+              orderId: r.order_id || r.bill_key, items: r.items || [], time: r.time || '', addOnTickets: Number(r.add_on_tickets || 0)
+            };
+          });
+          unpaidBills = ubObj;
+        }
+        if (Array.isArray(cloudMenu) && cloudMenu.length > 0) {
+          menuItems = cloudMenu.map(r => ({
+            id: r.id, name: r.name, cat: r.cat, price: r.price, discount: r.discount || 0,
+            desc: r.desc_text || '', img: r.img || '🍕', available: r.available, variants: r.variants || []
+          }));
+        }
+        if (Array.isArray(cloudCats) && cloudCats.length > 0) {
+          menuCategories = cloudCats.map(r => r.name);
+        }
+        if (Array.isArray(cloudDeals) && cloudDeals.length > 0) {
+          deals = cloudDeals.map(r => ({
+            id: r.id, name: r.name, category: r.category, items: r.items || [],
+            price: r.price, available: r.available
+          }));
+        }
+        if (Array.isArray(cloudInv)) {
+          inventory = cloudInv.map(r => ({
+            id: r.id, item: r.item || r.name || '', name: r.item || r.name || '', unit: r.unit || 'pcs', stock: Number(r.stock ?? r.qty ?? 0), qty: Number(r.stock ?? r.qty ?? 0), min: Number(r.min ?? r.minQty ?? 10), minQty: Number(r.min ?? r.minQty ?? 10), price: Number(r.price ?? r.cost ?? 0), cost: Number(r.price ?? r.cost ?? 0), last: r.last || ''
+          }));
+        }
+        if (Array.isArray(cloudEmp)) {
+          employees = cloudEmp.map(r => ({
+            id: r.id, name: r.name, cnic: r.cnic || '', phone: r.phone || '', designation: r.designation || '', salary: r.salary || 0,
+            status: r.status || 'Present', address: r.address || '', salaryPayments: r.salary_payments || [], advances: r.advances || [], attendanceLog: r.attendance_log || []
+          }));
+        }
+        if (Array.isArray(cloudPc)) {
+          pettyCash = cloudPc.map(r => ({
+            id: r.id, name: r.name, category: r.category, amount: Number(r.amount || 0), date: r.date || '', notes: r.notes || '',
+            closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
+          }));
+        }
+        if (Array.isArray(cloudSales)) {
+          salesLedger = cloudSales.map(r => ({
+            id: r.id, date: r.date, table: r.table_id != null ? Number(r.table_id) : null, items: r.items || [], total: Number(r.total || 0), payment: r.payment, waiter: r.waiter,
+            discount: Number(r.discount || 0), perHead: Number(r.per_head || 0), orderType: r.order_type || 'Dine-in',
+            customerPhone: r.customer_phone || '', customerAddress: r.customer_address || '',
+            closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
+          }));
+        }
+        if (Array.isArray(cloudExp)) {
+          expenseLedger = cloudExp.map(r => ({
+            id: r.id, date: r.date, category: r.category, amount: Number(r.amount || 0), description: r.description || '', meta: r.meta || {}
+          }));
+        }
+        if (Array.isArray(cloudCancelled)) {
+          cancelledOrders = cloudCancelled.map(r => ({
+            id: r.id, date: r.date, time: r.time, orderId: r.order_id, table: r.table_id,
+            orderType: r.order_type || 'Dine-in', items: r.items || [], cost: Number(r.cost || 0),
+            waiter: r.waiter || '', cancelType: r.cancel_type || 'Partial',
+            closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
+          }));
+        }
+        if (Array.isArray(cloudDailyCloseouts)) {
+          dailyCloseouts = cloudDailyCloseouts.map(r => ({
+            id: r.id, date: r.date, time: r.time, totalSales: Number(r.total_sales || 0),
+            salesCount: Number(r.sales_count || 0), totalExpenses: Number(r.total_expenses || 0), totalProfit: Number(r.total_profit || 0),
+            totalCancelledCost: Number(r.total_cancelled_cost || 0), cancelledCount: Number(r.cancelled_count || 0),
+            closedBy: r.closed_by || 'Admin', timestamp: r.timestamp || 0
+          }));
+        }
+        if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
+          appUsers = cloudUsers.map(r => ({
+            username: r.username, password: r.password, role: r.role || 'Admin', name: r.name || ''
+          }));
+        }
+        if (Array.isArray(cloudSettings) && cloudSettings.length > 0) {
+          const pSetting = cloudSettings.find(s => s.key === 'nextPettyId');
+          if (pSetting && pSetting.value && pSetting.value.nextPettyId) {
+            nextPettyId = pSetting.value.nextPettyId;
           }
-          if (Array.isArray(cloudSales) && cloudSales.length > 0 && salesLedger.length === 0) {
-            salesLedger = cloudSales.map(r => ({
-              id: r.id, date: r.date, table: r.table_id, items: r.items || [], total: Number(r.total || 0), payment: r.payment, waiter: r.waiter,
-              discount: Number(r.discount || 0), perHead: Number(r.per_head || 0), orderType: r.order_type || 'Dine-in',
-              customerPhone: r.customer_phone || '', customerAddress: r.customer_address || '',
-              closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
-            }));
-          }
-          if (Array.isArray(cloudInv) && cloudInv.length > 0 && inventory.length === 0) {
-            inventory = cloudInv.map(r => ({
-              id: r.id, item: r.item, unit: r.unit || '', stock: r.stock || 0, min: r.min || 0, price: r.price || 0, last: r.last || ''
-            }));
-          }
-          if (Array.isArray(cloudEmp) && cloudEmp.length > 0 && employees.length === 0) {
-            employees = cloudEmp.map(r => ({
-              id: r.id, name: r.name, cnic: r.cnic || '', phone: r.phone || '', designation: r.designation || '', salary: r.salary || 0,
-              status: r.status || 'Present', address: r.address || '', salaryPayments: r.salary_payments || [], advances: r.advances || [], attendanceLog: r.attendance_log || []
-            }));
-          }
-          if (Array.isArray(cloudPc) && cloudPc.length > 0 && pettyCash.length === 0) {
-            pettyCash = cloudPc.map(r => ({
-              id: r.id, name: r.name, category: r.category, amount: Number(r.amount || 0), date: r.date || '', notes: r.notes || '',
-              closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
-            }));
-          }
-          if (Array.isArray(cloudExp) && cloudExp.length > 0 && expenseLedger.length === 0) {
-            expenseLedger = cloudExp.map(r => ({
-              id: r.id, date: r.date, category: r.category, amount: Number(r.amount || 0), description: r.description || '', meta: r.meta || {}
-            }));
-          }
-        } else {
-          // In Web / Vercel browser mode:
-          if (Array.isArray(cloudOrders) && cloudOrders.length > 0) {
-            orders = cloudOrders.map(r => ({
-              id: r.id, table: r.table_id, items: r.items || [], status: r.status,
-              note: r.note, time: r.time, waiter: r.waiter, isAddOn: !!r.is_add_on, total: Number(r.total || 0),
-              orderType: r.order_type || 'Dine-in', customerPhone: r.customer_phone || '',
-              customerAddress: r.customer_address || '',
-            }));
-          }
-          if (Array.isArray(cloudTables) && cloudTables.length > 0) {
-            tables = cloudTables.map(r => ({
-              id: r.id, status: r.status || 'available', persons: r.persons || 0,
-              seats: r.seats || 4, reservedFor: r.reserved_for || '', reservedTime: r.reserved_time || '',
-            }));
-          }
-          if (Array.isArray(cloudBills) && cloudBills.length > 0) {
-            const ubObj = {};
-            cloudBills.forEach(r => {
-              ubObj[r.bill_key] = {
-                orderId: r.order_id, items: r.items || [], time: r.time || '', addOnTickets: r.add_on_tickets || 0
-              };
-            });
-            unpaidBills = ubObj;
-          }
-          if (Array.isArray(cloudMenu) && cloudMenu.length > 0) {
-            menuItems = cloudMenu.map(r => ({
-              id: r.id, name: r.name, cat: r.cat, price: r.price, discount: r.discount || 0,
-              desc: r.desc_text || '', img: r.img || '🍕', available: r.available, variants: r.variants || []
-            }));
-          }
-          if (Array.isArray(cloudCats) && cloudCats.length > 0) {
-            menuCategories = cloudCats.map(r => r.name);
-          }
-          if (Array.isArray(cloudDeals) && cloudDeals.length > 0) {
-            deals = cloudDeals.map(r => ({
-              id: r.id, name: r.name, category: r.category, items: r.items || [],
-              price: r.price, available: r.available
-            }));
-          }
-          if (Array.isArray(cloudInv) && cloudInv.length > 0) {
-            inventory = cloudInv.map(r => ({
-              id: r.id, item: r.item, unit: r.unit || '', stock: r.stock || 0, min: r.min || 0, price: r.price || 0, last: r.last || ''
-            }));
-          }
-          if (Array.isArray(cloudEmp) && cloudEmp.length > 0) {
-            employees = cloudEmp.map(r => ({
-              id: r.id, name: r.name, cnic: r.cnic || '', phone: r.phone || '', designation: r.designation || '', salary: r.salary || 0,
-              status: r.status || 'Present', address: r.address || '', salaryPayments: r.salary_payments || [], advances: r.advances || [], attendanceLog: r.attendance_log || []
-            }));
-          }
-          if (Array.isArray(cloudPc) && cloudPc.length > 0) {
-            pettyCash = cloudPc.map(r => ({
-              id: r.id, name: r.name, category: r.category, amount: Number(r.amount || 0), date: r.date || '', notes: r.notes || '',
-              closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
-            }));
-          }
-          if (Array.isArray(cloudSales) && cloudSales.length > 0) {
-            salesLedger = cloudSales.map(r => ({
-              id: r.id, date: r.date, table: r.table_id, items: r.items || [], total: Number(r.total || 0), payment: r.payment, waiter: r.waiter,
-              discount: Number(r.discount || 0), perHead: Number(r.per_head || 0), orderType: r.order_type || 'Dine-in',
-              customerPhone: r.customer_phone || '', customerAddress: r.customer_address || '',
-              closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
-            }));
-          }
-          if (Array.isArray(cloudExp) && cloudExp.length > 0) {
-            expenseLedger = cloudExp.map(r => ({
-              id: r.id, date: r.date, category: r.category, amount: Number(r.amount || 0), description: r.description || '', meta: r.meta || {}
-            }));
-          }
-          if (Array.isArray(cloudCancelled) && cloudCancelled.length > 0) {
-            cancelledOrders = cloudCancelled.map(r => ({
-              id: r.id, date: r.date, time: r.time, orderId: r.order_id, table: r.table_id,
-              orderType: r.order_type || 'Dine-in', items: r.items || [], cost: Number(r.cost || 0),
-              waiter: r.waiter || '', cancelType: r.cancel_type || 'Partial',
-              closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
-            }));
-          }
-          if (Array.isArray(cloudDailyCloseouts) && cloudDailyCloseouts.length > 0) {
-            dailyCloseouts = cloudDailyCloseouts.map(r => ({
-              id: r.id, date: r.date, time: r.time, totalSales: Number(r.total_sales || 0),
-              salesCount: Number(r.sales_count || 0), totalExpenses: Number(r.total_expenses || 0), totalProfit: Number(r.total_profit || 0),
-              totalCancelledCost: Number(r.total_cancelled_cost || 0), cancelledCount: Number(r.cancelled_count || 0),
-              closedBy: r.closed_by || 'Admin', timestamp: r.timestamp || 0
-            }));
-          }
-          if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
-            appUsers = cloudUsers.map(r => ({
-              username: r.username, password: r.password, role: r.role || 'Admin', name: r.name || ''
-            }));
-          }
-          if (Array.isArray(cloudSettings) && cloudSettings.length > 0) {
-            const pSetting = cloudSettings.find(s => s.key === 'nextPettyId');
-            if (pSetting && pSetting.value && pSetting.value.nextPettyId) {
-              nextPettyId = pSetting.value.nextPettyId;
-            }
-          }
+        }
+
+        // Keep local SQLite in sync with latest Cloud DB state
+        if (window.api) {
+          try {
+            if (window.api.saveSalesLedger && Array.isArray(salesLedger)) window.api.saveSalesLedger(salesLedger);
+            if (window.api.saveCancelledOrders && Array.isArray(cancelledOrders)) window.api.saveCancelledOrders(cancelledOrders);
+            if (window.api.saveDailyCloseouts && Array.isArray(dailyCloseouts)) window.api.saveDailyCloseouts(dailyCloseouts);
+            if (window.api.saveOrders && Array.isArray(orders)) window.api.saveOrders(orders);
+            if (window.api.saveUnpaidBills && unpaidBills) window.api.saveUnpaidBills(unpaidBills);
+            if (window.api.saveTables && Array.isArray(tables)) window.api.saveTables(tables);
+            if (window.api.saveInventory && Array.isArray(inventory)) window.api.saveInventory(inventory);
+            if (window.api.saveEmployees && Array.isArray(employees)) window.api.saveEmployees(employees);
+            if (window.api.savePettyCash && Array.isArray(pettyCash)) window.api.savePettyCash(pettyCash);
+            if (window.api.saveExpenseLedger && Array.isArray(expenseLedger)) window.api.saveExpenseLedger(expenseLedger);
+          } catch (e) {}
         }
       } catch (err) {
         console.warn('Supabase load warning:', err);
