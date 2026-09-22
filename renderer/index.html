@@ -3919,32 +3919,43 @@ async function finalizeSale(){
   // Delete completed orders and unpaid bill from Supabase Cloud DB permanently
   if (supabaseClient) {
     try {
-      if (orderIds && orderIds.length > 0) {
-        await supabaseClient.from('orders').delete().in('id', orderIds.map(String));
-      }
-      if (billKey != null) {
-        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey));
-      }
       if (type === 'Dine-in') {
+        await supabaseClient.from('orders').delete().eq('table_id', billKey);
+        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey));
         await supabaseClient.from('tables').upsert([{ id: billKey, status: 'available', persons: 0 }]);
+      } else {
+        const delIds = [String(billKey), ...orderIds.map(String)];
+        await supabaseClient.from('orders').delete().in('id', delIds);
+        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey));
       }
       await supabaseClient.from('sales_ledger').upsert([{
         id: slId, date: today, table_id: type === 'Dine-in' ? billKey : null,
         items, total: Number(total || 0), payment: selectedPayment,
         waiter: group[0]?.waiter || currentUser, discount: discPct, per_head: perHead,
         order_type: type, customer_phone: group[0]?.customerPhone || '',
-        customer_address: group[0]?.customerAddress || ''
+        customer_address: group[0]?.customerAddress || '',
+        closed: 0, closeout_id: ''
       }]);
     } catch(e) { console.warn('Supabase cleanup warning:', e); }
   }
 
-  orderIds.forEach(id=>{orders=orders.filter(x=>x.id!==id);});
-  if(type==='Dine-in'){
-    const t=tables.find(t=>t.id===billKey);
-    if(t){t.status='available';t.persons=0;}
+  // Remove from in-memory orders array so Live Orders Queue updates immediately
+  if (type === 'Dine-in') {
+    orders = orders.filter(x => x.table !== billKey && !orderIds.includes(x.id));
+    const t = tables.find(t => t.id === billKey);
+    if (t) { t.status = 'available'; t.persons = 0; }
+  } else {
+    orders = orders.filter(x => x.id !== billKey && !orderIds.includes(x.id));
   }
+
   delete unpaidBills[billKey];
-  currentBillKey=null;currentBillOrderIds=[];currentBillOrderType='Dine-in';
+  delete unpaidBills[String(billKey)];
+  if (typeof billKey === 'number') delete unpaidBills[String(billKey)];
+  if (typeof billKey === 'string' && !isNaN(Number(billKey))) delete unpaidBills[Number(billKey)];
+
+  currentBillKey = null;
+  currentBillOrderIds = [];
+  currentBillOrderType = 'Dine-in';
 
   // Reset billing inputs
   resetBillingState();
@@ -3957,8 +3968,11 @@ async function finalizeSale(){
   if (typeof updateCashReceivedCalc==='function') updateCashReceivedCalc(0);
 
   await saveToLocal();
-  ordersView='board';showSection('orders');
-  toast(type==='Dine-in'?'Sale completed! Table cleared ✓':'Sale completed ✓');
+  ordersView = 'board';
+  showSection('orders');
+  if (typeof renderOrders === 'function') renderOrders();
+  if (typeof renderTables === 'function') renderTables();
+  toast(type==='Dine-in'?'Sale completed! Table cleared & added to records ✓':'Sale completed & added to records ✓');
 }
 
 // ── INVENTORY ──
