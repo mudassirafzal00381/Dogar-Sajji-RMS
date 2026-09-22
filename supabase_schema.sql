@@ -265,9 +265,29 @@ BEGIN
   END LOOP;
 END $$;
 
--- Enable Realtime Sync
-ALTER PUBLICATION supabase_realtime ADD TABLE 
-  public.orders, public.tables, public.unpaid_bills, public.menu_items, 
-  public.menu_categories, public.deals, public.inventory, public.employees, 
-  public.petty_cash, public.sales_ledger, public.expense_ledger, public.settings, 
-  public.app_users, public.cancelled_orders, public.daily_closeouts;
+-- Enable Realtime Sync (Idempotent: adds tables safely without duplicate_object error)
+DO $$
+DECLARE
+  tbl_name text;
+  tables_to_add text[] := ARRAY[
+    'orders', 'tables', 'unpaid_bills', 'menu_items', 
+    'menu_categories', 'deals', 'inventory', 'employees', 
+    'petty_cash', 'sales_ledger', 'expense_ledger', 'settings', 
+    'app_users', 'cancelled_orders', 'daily_closeouts'
+  ];
+BEGIN
+  FOREACH tbl_name IN ARRAY tables_to_add LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_publication_tables 
+      WHERE pubname = 'supabase_realtime' 
+      AND schemaname = 'public' 
+      AND tablename = tbl_name
+    ) THEN
+      BEGIN
+        EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE public.%I', tbl_name);
+      EXCEPTION WHEN duplicate_object THEN
+        NULL;
+      END;
+    END IF;
+  END LOOP;
+END $$;
