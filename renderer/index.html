@@ -2203,8 +2203,8 @@ function renderManager(){
         </div>
         <div class="order-footer">
           ${o.status === 'pending'
-            ? `<button class="btn-sm btn-green" onclick="updateOrder('${o.id}','confirmed')">✓ Accept</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">Cancel Order</button>`
-            : `<button class="btn-sm btn-green" style="font-weight:700" onclick="payOrder('${o.id}')">⚡ Pay & Bill</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">Cancel Order</button>`
+            ? `<button class="btn-sm btn-green" onclick="updateOrder('${o.id}','confirmed')">✓ Accept</button><button class="btn-sm btn-gold" style="font-weight:700" onclick="oneClickPrintAndSettle('${type==='Dine-in'?o.table:o.id}','${type}')">🖨️ Print & Settle</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">Cancel</button>`
+            : `<button class="btn-sm btn-gold" style="font-weight:700" onclick="oneClickPrintAndSettle('${type==='Dine-in'?o.table:o.id}','${type}')">🖨️ Print & Settle</button><button class="btn-sm btn-green" style="font-weight:600" onclick="payOrder('${o.id}')">⚡ Edit Bill</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">Cancel</button>`
           }
           <button class="btn-sm btn-blue" onclick="editOrder('${o.id}')">Edit</button>
         </div>
@@ -3458,7 +3458,7 @@ function buildReceiptHtml(isCustomerInvoice = false) {
   </body></html>`;
 }
 
-function printCustomerInvoice() {
+function printCustomerInvoice(finalize = true) {
   const billDisplay = document.getElementById('bill-display');
   if(!billDisplay || !currentBillKey){
     toast('Please generate a bill first','error'); return;
@@ -3470,11 +3470,11 @@ function printCustomerInvoice() {
     return;
   }
 
-  const printerDevice = localStorage.getItem('hfc_printer_device') || '';
-  const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
+  const printerDevice = localStorage.getItem('dogar_bill_printer') || localStorage.getItem('hfc_printer_device') || '';
+  const silentPrint = localStorage.getItem('dogar_silent_print') !== 'false' && localStorage.getItem('hfc_silent_print') !== 'false';
 
   if (window.api && window.api.printReceipt) {
-    toast('Printing Customer Invoice...', 'info');
+    toast('Printing Customer Invoice & settling...', 'info');
     window.api.printReceipt(htmlContent, {
       silent: silentPrint,
       deviceName: printerDevice || undefined
@@ -3486,6 +3486,8 @@ function printCustomerInvoice() {
   } else {
     fallbackPrintWindow(htmlContent, false);
   }
+
+  if (finalize) finalizeSale();
 }
 
 // ── DATABASE BACKUP ──
