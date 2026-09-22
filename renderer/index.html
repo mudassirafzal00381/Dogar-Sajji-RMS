@@ -1697,11 +1697,27 @@ function removeTable(id){
 // One nav tab, three panels switched via ordersView: the live order board
 // (old Manager), the order builder (old Take Order), and payment (old Billing).
 function renderOrders(){
+  if (currentRole === 'Order Taker' && ordersView === 'board') {
+    ordersView = 'new';
+  }
   if(ordersView==='new')  return renderWaiter();
   if(ordersView==='pay')  return renderBilling();
   return renderManager();
 }
-function goToOrderBoard(){ ordersView='board'; showSection('orders'); }
+function goToOrderBoard(){
+  if (currentRole === 'Order Taker') {
+    toast('Order Takers are restricted from Order Board', 'error');
+    ordersView = 'new';
+    showSection('orders');
+    return;
+  }
+  ordersView='board';
+  showSection('orders');
+}
+function goToPayOrderView(){
+  ordersView='pay';
+  showSection('orders');
+}
 function goToNewOrder(){ ordersView='new'; showSection('orders'); }
 function goToNewOrderWithTable(tableId){
   orderType='Dine-in';
@@ -1727,7 +1743,11 @@ function renderWaiter(){
   return `
   <div class="section-header">
     <div><div class="section-title">Take Order</div><div class="section-sub">Choose order type, browse menu, add to cart</div></div>
-    <button class="btn-outline" onclick="goToOrderBoard()">← Back to Orders Board</button>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+      <button class="btn-sm ${ordersView==='new'?'btn-gold':'btn-outline'}" style="${ordersView==='new'?'font-weight:700':''}" onclick="goToNewOrder()">🛍️ Take Order</button>
+      <button class="btn-sm ${ordersView==='pay'?'btn-gold':'btn-outline'}" style="${ordersView==='pay'?'font-weight:700':''}" onclick="goToPayOrderView()">💳 Billing & Payment</button>
+      ${currentRole !== 'Order Taker' ? `<button class="btn-sm ${ordersView==='board'?'btn-gold':'btn-outline'}" style="${ordersView==='board'?'font-weight:700':''}" onclick="goToOrderBoard()">📋 Order Board</button>` : ''}
+    </div>
   </div>
   <div style="margin-bottom:1rem">
     <div style="font-size:.85rem;color:var(--text2);margin-bottom:.5rem">Order Type</div>
@@ -2090,7 +2110,8 @@ async function submitOrder(){
       if(orderType==='Dine-in'){const tbl=tables.find(t=>t.id===selectedTable);if(tbl)tbl.status='occupied';}
       printKitchenTicket(newKitchenTicket.id);
       cart=[];selectedTable=null;orderType='Dine-in';deliveryPhone='';deliveryAddress='';
-      ordersView='board';showSection('orders');
+      ordersView=(currentRole === 'Order Taker') ? 'new' : 'board';
+      showSection('orders');
       return;
     }
   }
@@ -2111,7 +2132,8 @@ async function submitOrder(){
   saveToLocal();
   printKitchenTicket(newKitchenTicket.id);
   cart=[];selectedTable=null;orderType='Dine-in';deliveryPhone='';deliveryAddress='';
-  ordersView='board';showSection('orders');
+  ordersView=(currentRole === 'Order Taker') ? 'new' : 'board';
+  showSection('orders');
 }
 function holdOrder(){toast('Order held. You can resume later.');}
 
@@ -2130,7 +2152,12 @@ function renderManager(){
   return `
   <div class="section-header">
     <div><div class="section-title">Order Board</div><div class="section-sub">${activeOrders.length} active order${activeOrders.length===1?'':'s'} in queue</div></div>
-    <button class="print-btn" onclick="refreshManagerOrders()">↻ Refresh Orders</button>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+      <button class="btn-sm ${ordersView==='new'?'btn-gold':'btn-outline'}" onclick="goToNewOrder()">🛍️ Take Order</button>
+      <button class="btn-sm ${ordersView==='pay'?'btn-gold':'btn-outline'}" onclick="goToPayOrderView()">💳 Billing & Payment</button>
+      <button class="btn-sm ${ordersView==='board'?'btn-gold':'btn-outline'}" style="font-weight:700" onclick="goToOrderBoard()">📋 Order Board</button>
+      <button class="print-btn" onclick="refreshManagerOrders()">↻ Refresh Orders</button>
+    </div>
   </div>
 
   <div class="card" style="margin-bottom:1.25rem;padding:.85rem 1rem">
@@ -2961,8 +2988,15 @@ function renderBilling(){
 
   return `
   <div class="section-header">
-    <div><div class="section-title">Billing & Payment</div><div class="section-sub">${readyOrders.length} orders ready · ${tableIds.length} tables · ${otherReady.length} takeaway/delivery</div></div>
-    <button class="btn-outline" onclick="goToOrderBoard()">← Back to Orders Board</button>
+    <div>
+      <div class="section-title">Billing & Payment ${currentRole === 'Order Taker' ? '<span style="font-size:.75rem;color:var(--amber);background:rgba(245,158,11,0.12);padding:.2rem .6rem;border-radius:20px;margin-left:.5rem;vertical-align:middle;font-weight:600">👁️ View Bill Only</span>' : ''}</div>
+      <div class="section-sub">${readyOrders.length} orders ready · ${tableIds.length} tables · ${otherReady.length} takeaway/delivery</div>
+    </div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+      <button class="btn-sm ${ordersView==='new'?'btn-gold':'btn-outline'}" onclick="goToNewOrder()">🛍️ Take Order</button>
+      <button class="btn-sm ${ordersView==='pay'?'btn-gold':'btn-outline'}" style="font-weight:700" onclick="goToPayOrderView()">💳 Billing & Payment</button>
+      ${currentRole !== 'Order Taker' ? `<button class="btn-sm ${ordersView==='board'?'btn-gold':'btn-outline'}" onclick="goToOrderBoard()">📋 Order Board</button>` : ''}
+    </div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
     <div>
@@ -3121,10 +3155,21 @@ function renderBilling(){
         </div>
         <p style="color:var(--text3);text-align:center;font-size:.85rem;margin:1.5rem 0">Generate a bill to preview</p>
       </div>
-      <div style="display:flex;gap:.5rem;margin-top:1rem;justify-content:center;flex-wrap:wrap">
-        <button type="button" class="btn-outline" style="flex:1; min-width:140px; padding:.85rem; font-size:.92rem; font-weight:700; border:2px solid var(--blue); color:var(--blue); background:rgba(74,144,217,0.12); border-radius:var(--radius2); cursor:pointer;" onclick="printCustomerInvoice()">📄 Customer Invoice</button>
-        <button type="button" class="print-btn" style="flex:1.2; min-width:170px; padding:.85rem; font-size:.92rem; font-weight:700" onclick="printBill()">🖨️ Print Receipt & Settle</button>
-      </div>
+      ${currentRole === 'Order Taker' ? `
+        <div style="margin-top:1rem;background:rgba(245,158,11,0.12);border:1.5px dashed var(--amber);border-radius:var(--radius2);padding:.85rem 1rem;text-align:center">
+          <div style="color:var(--amber);font-weight:700;font-size:.9rem;display:flex;align-items:center;justify-content:center;gap:.4rem">
+            🔒 Restricted Access — Order Taker View Mode
+          </div>
+          <div style="color:var(--text2);font-size:.78rem;margin-top:.25rem">
+            Order Takers can view customer bill totals. Printing invoices and settling receipts are restricted to Manager/Admin.
+          </div>
+        </div>
+      ` : `
+        <div style="display:flex;gap:.5rem;margin-top:1rem;justify-content:center;flex-wrap:wrap">
+          <button type="button" class="btn-outline" style="flex:1; min-width:140px; padding:.85rem; font-size:.92rem; font-weight:700; border:2px solid var(--blue); color:var(--blue); background:rgba(74,144,217,0.12); border-radius:var(--radius2); cursor:pointer;" onclick="printCustomerInvoice()">📄 Customer Invoice</button>
+          <button type="button" class="print-btn" style="flex:1.2; min-width:170px; padding:.85rem; font-size:.92rem; font-weight:700" onclick="printBill()">🖨️ Print Receipt & Settle</button>
+        </div>
+      `}
     </div>
   </div>`;
 }
@@ -3431,6 +3476,10 @@ function buildReceiptHtml(isCustomerInvoice = false) {
 }
 
 function printCustomerInvoice() {
+  if (currentRole === 'Order Taker') {
+    toast('Order Takers are restricted from printing invoices', 'error');
+    return;
+  }
   const billDisplay = document.getElementById('bill-display');
   if(!billDisplay || !currentBillKey){
     toast('Please generate a bill first','error'); return;
@@ -3461,6 +3510,10 @@ function printCustomerInvoice() {
 }
 
 function printBill(){
+  if (currentRole === 'Order Taker') {
+    toast('Order Takers are restricted from settling bills and printing receipts', 'error');
+    return;
+  }
   const billDisplay = document.getElementById('bill-display');
   if(!billDisplay || !currentBillKey){
     toast('Please generate a bill first','error'); return;
@@ -3783,6 +3836,10 @@ function downloadCSVFallback(content, fileName) {
 }
 
 async function finalizeSale(){
+  if (currentRole === 'Order Taker') {
+    toast('Order Takers are restricted from settling sales', 'error');
+    return;
+  }
   if(!currentBillKey){toast('No bill generated yet','error');return;}
   const today=new Date().toISOString().split('T')[0];
   const selectedPayment=document.getElementById('selected-payment')?.textContent?.replace('✓ ','').replace(' selected','').trim()||'Cash';
