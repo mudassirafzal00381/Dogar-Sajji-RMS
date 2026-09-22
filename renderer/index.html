@@ -646,14 +646,14 @@ tr:hover td{background:rgba(201,168,76,.04)}
         <div class="account-icon">🛍️</div>
         <div class="account-info">
           <div class="account-name">Order Taker 1</div>
-          <div class="account-role">POS & Kitchen</div>
+          <div class="account-role">Take Order Only</div>
         </div>
       </div>
       <div class="quick-account-card" id="card-order2" onclick="selectQuickUser('order2')">
         <div class="account-icon">📝</div>
         <div class="account-info">
           <div class="account-name">Order Taker 2</div>
-          <div class="account-role">POS & Kitchen</div>
+          <div class="account-role">Take Order Only</div>
         </div>
       </div>
     </div>
@@ -816,7 +816,7 @@ const SALES_RESTRICTED_ROLES = [];
 const ROLES = {
   Admin: ['dashboard','menu','orders','kitchen','inventory','employees','finance'],
   Manager: ['dashboard','menu','orders','kitchen','inventory','employees','finance'],
-  'Order Taker': ['orders','kitchen']
+  'Order Taker': ['orders']
 };
 
 const TABS = {
@@ -912,19 +912,6 @@ let activeSection = '';
 // Tracks unpaid bills: { tableId: { orderId, items, total, time } }
 let unpaidBills = {};
 
-// ── LOCAL DATE HELPERS (Prevents UTC timezone day-shift discrepancies) ──
-function getLocalDateStr(d = new Date()) {
-  const dt = (typeof d === 'string' || typeof d === 'number') ? new Date(d) : d;
-  const year = dt.getFullYear();
-  const month = String(dt.getMonth() + 1).padStart(2, '0');
-  const day = String(dt.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function getTodayDateStr() {
-  return getLocalDateStr(new Date());
-}
-
 // ── USERS & AUTHENTICATION ──
 let appUsers = [
   { username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin / Manager' },
@@ -1000,7 +987,7 @@ function selectQuickUser(username) {
   if (errBox) errBox.style.display = 'none';
 }
 
-async function handleLoginForm(e) {
+function handleLoginForm(e) {
   if (e && typeof e.preventDefault === 'function') e.preventDefault();
   try {
     const usernameVal = document.getElementById('login-username')?.value.trim() || '';
@@ -1038,7 +1025,7 @@ async function handleLoginForm(e) {
       return false;
     }
 
-    await performUserSessionLogin(user);
+    performUserSessionLogin(user);
   } catch (err) {
     console.error('Login error:', err);
     showLoginError('Login error: ' + err.message);
@@ -1046,7 +1033,7 @@ async function handleLoginForm(e) {
   return false;
 }
 
-async function performUserSessionLogin(user) {
+function performUserSessionLogin(user) {
   try {
     currentUser = user.username;
     currentRole = user.role || 'Admin';
@@ -1071,15 +1058,15 @@ async function performUserSessionLogin(user) {
     if (appScr) appScr.style.display = 'flex';
 
     const targetSec = (currentRole === 'Order Taker') ? 'orders' : 'dashboard';
+    if (currentRole === 'Order Taker') ordersView = 'new';
+    if (typeof showSection === 'function') showSection(targetSec);
 
     if (typeof migrateLocalStorageIfNeeded === 'function') {
-      await migrateLocalStorageIfNeeded().catch(e => console.warn('Migration:', e));
+      migrateLocalStorageIfNeeded().catch(e => console.warn('Migration:', e));
     }
     if (typeof loadFromLocal === 'function') {
-      await loadFromLocal().catch(e => console.warn('Load local error:', e));
+      loadFromLocal().catch(e => console.warn('Load local error:', e));
     }
-
-    if (typeof showSection === 'function') showSection(targetSec);
 
     if (typeof toast === 'function') toast(`Welcome ${user.name || user.username}!`, 'success');
   } catch (err) {
@@ -1088,9 +1075,9 @@ async function performUserSessionLogin(user) {
   }
 }
 
-async function quickLogin(accountType) {
+function quickLogin(accountType) {
   const target = (Array.isArray(appUsers) ? appUsers : []).find(u => u && String(u.username).toLowerCase() === String(accountType).toLowerCase()) || appUsers[0];
-  await performUserSessionLogin(target);
+  performUserSessionLogin(target);
 }
 
 function doLogout(){
@@ -1113,7 +1100,10 @@ function doLogout(){
 function buildNav(){
   const nav=document.getElementById('nav-tabs');if(!nav)return;
   const allowed=ROLES[currentRole]||ROLES.Admin;
-  nav.innerHTML=allowed.map(t=>`<div class="nav-tab ${activeSection===t?'active':''}" data-section="${t}" onclick="showSection('${t}')">${TABS[t]||t}</div>`).join('');
+  nav.innerHTML=allowed.map(t=>{
+    const label = (currentRole === 'Order Taker' && t === 'orders') ? '🛍️ Take Order' : (TABS[t] || t);
+    return `<div class="nav-tab ${activeSection===t?'active':''}" data-section="${t}" onclick="showSection('${t}')">${label}</div>`;
+  }).join('');
 
   // Topbar visibility based on role
   const rolesBtn = document.getElementById('btn-change-pwd');
@@ -1123,14 +1113,20 @@ function buildNav(){
   if (mobBar) {
     if (currentRole === 'Order Taker') {
       mobBar.innerHTML = `
-        <div class="mobile-nav-item active" onclick="goToNewOrder(); updateMobileNav(this);"><span>🛍️</span>Order</div>
-        <div class="mobile-nav-item" onclick="showSection('tables'); updateMobileNav(this);"><span>🪑</span>Tables & Bills</div>
+        <div class="mobile-nav-item active" onclick="goToNewOrder(); updateMobileNav(this);"><span>🛍️</span>Take Order</div>
       `;
     }
   }
 }
 
 function showSection(sec) {
+  const allowed = ROLES[currentRole] || ROLES.Admin;
+  if (currentRole === 'Order Taker') {
+    sec = 'orders';
+    ordersView = 'new';
+  } else if (!allowed.includes(sec)) {
+    sec = allowed[0] || 'dashboard';
+  }
   activeSection = sec;
   document.querySelectorAll('.nav-tab').forEach(t => {
     t.classList.toggle('active', t.dataset.section === sec);
@@ -1143,6 +1139,10 @@ function showSection(sec) {
 // ── RENDER ──
 function renderSection(sec){
   try {
+    if (currentRole === 'Order Taker') {
+      ordersView = 'new';
+      return renderWaiter();
+    }
     switch(sec){
       case 'dashboard': return renderDashboard();
       case 'menu':      return renderMenu();
@@ -1169,10 +1169,8 @@ function orderLabel(o){
 // ── DASHBOARD ──
 function renderDashboard(){
   try {
-    const todayStr = getTodayDateStr();
-    const yDate = new Date();
-    yDate.setDate(yDate.getDate() - 1);
-    const yesterdayStr = getLocalDateStr(yDate);
+    const todayStr = new Date().toISOString().split('T')[0];
+    const yesterdayStr = new Date(Date.now()-86400000).toISOString().split('T')[0];
     
     const safeSales = Array.isArray(salesLedger) ? salesLedger : [];
     const safeOrders = Array.isArray(orders) ? orders : [];
@@ -1181,16 +1179,15 @@ function renderDashboard(){
     const safeCancelled = Array.isArray(cancelledOrders) ? cancelledOrders : [];
     const safeEmployees = Array.isArray(employees) ? employees : [];
 
-    const todaySalesList = safeSales.filter(s => s && s.date === todayStr);
-    const totalSales = todaySalesList.reduce((a, s) => a + (Number(s.total) || 0), 0);
-    const yesterdaySales = safeSales.filter(s => s && s.date === yesterdayStr).reduce((a, s) => a + (Number(s.total) || 0), 0);
-    const salesTrend = yesterdaySales > 0 ? Math.round((totalSales - yesterdaySales) / yesterdaySales * 100) : null;
-    const ordersToday = safeOrders.length + todaySalesList.length;
-    const pending = safeOrders.filter(o => o && o.status === 'pending').length;
-    const occupied = safeTables.filter(t => t && t.status === 'occupied').length;
-    const lowStock = safeInventory.filter(i => i && Number(i.stock) < Number(i.min));
-    const cancelledToday = safeCancelled.filter(c => c && c.date === todayStr);
-    const lostRevenueToday = cancelledToday.reduce((a, c) => a + (Number(c.cost) || 0), 0);
+    const totalSales = safeSales.filter(s=>s && s.date===todayStr && !s.closed).reduce((a,s)=>a+(s.total||0),0);
+    const yesterdaySales = safeSales.filter(s=>s && s.date===yesterdayStr).reduce((a,s)=>a+(s.total||0),0);
+    const salesTrend = yesterdaySales>0 ? Math.round((totalSales-yesterdaySales)/yesterdaySales*100) : null;
+    const ordersToday = safeOrders.length + safeSales.filter(s=>s && s.date===todayStr && !s.closed).length;
+    const pending = safeOrders.filter(o=>o && o.status==='pending').length;
+    const occupied = safeTables.filter(t=>t && t.status==='occupied').length;
+    const lowStock = safeInventory.filter(i=>i && i.stock<i.min);
+    const cancelledToday = safeCancelled.filter(c => c && c.date === todayStr && !c.closed);
+    const lostRevenueToday = cancelledToday.reduce((a, c) => a + (c.cost || 0), 0);
 
   return `
   <div class="section-header">
@@ -1714,25 +1711,22 @@ function removeTable(id){
 // One nav tab, three panels switched via ordersView: the live order board
 // (old Manager), the order builder (old Take Order), and payment (old Billing).
 function renderOrders(){
-  if (currentRole === 'Order Taker' && ordersView === 'board') {
+  if(currentRole === 'Order Taker') {
     ordersView = 'new';
+    return renderWaiter();
   }
   if(ordersView==='new')  return renderWaiter();
   if(ordersView==='pay')  return renderBilling();
   return renderManager();
 }
 function goToOrderBoard(){
-  if (currentRole === 'Order Taker') {
-    toast('Order Takers are restricted from Order Board', 'error');
+  if(currentRole === 'Order Taker') {
+    toast('Access restricted: Order Takers can only use Take Order', 'warning');
     ordersView = 'new';
     showSection('orders');
     return;
   }
   ordersView='board';
-  showSection('orders');
-}
-function goToPayOrderView(){
-  ordersView='pay';
   showSection('orders');
 }
 function goToNewOrder(){ ordersView='new'; showSection('orders'); }
@@ -1744,11 +1738,21 @@ function goToNewOrderWithTable(tableId){
 // Opens the payment panel for a specific bill and generates it immediately —
 // no more "find the same order again" once you land on the payment screen.
 function goToPayOrder(billKey,type){
+  if(currentRole === 'Order Taker') {
+    toast('Access restricted: Only Admin can access billing and payments', 'warning');
+    ordersView = 'new';
+    showSection('orders');
+    return;
+  }
   ordersView='pay';
   showSection('orders');
   generateMergedBill(billKey,type);
 }
 function payOrder(orderId){
+  if(currentRole === 'Order Taker') {
+    toast('Access restricted: Only Admin can access billing and payments', 'warning');
+    return;
+  }
   const o=orders.find(x=>x.id===orderId);
   if(!o)return;
   const type=o.orderType||'Dine-in';
@@ -1760,11 +1764,7 @@ function renderWaiter(){
   return `
   <div class="section-header">
     <div><div class="section-title">Take Order</div><div class="section-sub">Choose order type, browse menu, add to cart</div></div>
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-      <button class="btn-sm ${ordersView==='new'?'btn-gold':'btn-outline'}" style="${ordersView==='new'?'font-weight:700':''}" onclick="goToNewOrder()">🛍️ Take Order</button>
-      <button class="btn-sm ${ordersView==='pay'?'btn-gold':'btn-outline'}" style="${ordersView==='pay'?'font-weight:700':''}" onclick="goToPayOrderView()">💳 Billing & Payment</button>
-      ${currentRole !== 'Order Taker' ? `<button class="btn-sm ${ordersView==='board'?'btn-gold':'btn-outline'}" style="${ordersView==='board'?'font-weight:700':''}" onclick="goToOrderBoard()">📋 Order Board</button>` : ''}
-    </div>
+    ${currentRole !== 'Order Taker' ? `<button class="btn-outline" onclick="goToOrderBoard()">← Back to Orders Board</button>` : ''}
   </div>
   <div style="margin-bottom:1rem">
     <div style="font-size:.85rem;color:var(--text2);margin-bottom:.5rem">Order Type</div>
@@ -2127,7 +2127,7 @@ async function submitOrder(){
       if(orderType==='Dine-in'){const tbl=tables.find(t=>t.id===selectedTable);if(tbl)tbl.status='occupied';}
       printKitchenTicket(newKitchenTicket.id);
       cart=[];selectedTable=null;orderType='Dine-in';deliveryPhone='';deliveryAddress='';
-      ordersView=(currentRole === 'Order Taker') ? 'new' : 'board';
+      ordersView = (currentRole === 'Order Taker') ? 'new' : 'board';
       showSection('orders');
       return;
     }
@@ -2149,13 +2149,17 @@ async function submitOrder(){
   saveToLocal();
   printKitchenTicket(newKitchenTicket.id);
   cart=[];selectedTable=null;orderType='Dine-in';deliveryPhone='';deliveryAddress='';
-  ordersView=(currentRole === 'Order Taker') ? 'new' : 'board';
+  ordersView = (currentRole === 'Order Taker') ? 'new' : 'board';
   showSection('orders');
 }
 function holdOrder(){toast('Order held. You can resume later.');}
 
 // ── MANAGER ──
 function renderManager(){
+  if(currentRole === 'Order Taker') {
+    ordersView = 'new';
+    return renderWaiter();
+  }
   const todayStr = new Date().toISOString().split('T')[0];
   const pendingCount = orders.filter(o=>o.status==='pending').length;
   const readyCount = orders.filter(o=>o.status==='ready'||o.status==='preparing'||o.status==='confirmed').length;
@@ -2169,14 +2173,7 @@ function renderManager(){
   return `
   <div class="section-header">
     <div><div class="section-title">Order Board</div><div class="section-sub">${activeOrders.length} active order${activeOrders.length===1?'':'s'} in queue</div></div>
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-      ${currentRole !== 'Admin' ? `
-        <button class="btn-sm ${ordersView==='new'?'btn-gold':'btn-outline'}" onclick="goToNewOrder()">🛍️ Take Order</button>
-        <button class="btn-sm ${ordersView==='pay'?'btn-gold':'btn-outline'}" onclick="goToPayOrderView()">💳 Billing & Payment</button>
-        <button class="btn-sm ${ordersView==='board'?'btn-gold':'btn-outline'}" style="font-weight:700" onclick="goToOrderBoard()">📋 Order Board</button>
-      ` : ''}
-      <button class="print-btn" onclick="refreshManagerOrders()">↻ Refresh Orders</button>
-    </div>
+    <button class="print-btn" onclick="refreshManagerOrders()">↻ Refresh Orders</button>
   </div>
 
   <div class="card" style="margin-bottom:1.25rem;padding:.85rem 1rem">
@@ -2994,6 +2991,10 @@ function setQuickCashReceived(amt) {
 
 // ── BILLING ──
 function renderBilling(){
+  if(currentRole === 'Order Taker') {
+    ordersView = 'new';
+    return renderWaiter();
+  }
   const readyOrders=orders.filter(o=>o.status!=='pending');
   const dineInReady=readyOrders.filter(o=>(o.orderType||'Dine-in')==='Dine-in');
   const otherReady=readyOrders.filter(o=>o.orderType&&o.orderType!=='Dine-in');
@@ -3007,15 +3008,8 @@ function renderBilling(){
 
   return `
   <div class="section-header">
-    <div>
-      <div class="section-title">Billing & Payment ${currentRole === 'Order Taker' ? '<span style="font-size:.75rem;color:var(--amber);background:rgba(245,158,11,0.12);padding:.2rem .6rem;border-radius:20px;margin-left:.5rem;vertical-align:middle;font-weight:600">👁️ View Bill Only</span>' : ''}</div>
-      <div class="section-sub">${readyOrders.length} orders ready · ${tableIds.length} tables · ${otherReady.length} takeaway/delivery</div>
-    </div>
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-      <button class="btn-sm ${ordersView==='new'?'btn-gold':'btn-outline'}" onclick="goToNewOrder()">🛍️ Take Order</button>
-      <button class="btn-sm ${ordersView==='pay'?'btn-gold':'btn-outline'}" style="font-weight:700" onclick="goToPayOrderView()">💳 Billing & Payment</button>
-      ${currentRole !== 'Order Taker' ? `<button class="btn-sm ${ordersView==='board'?'btn-gold':'btn-outline'}" onclick="goToOrderBoard()">📋 Order Board</button>` : ''}
-    </div>
+    <div><div class="section-title">Billing & Payment</div><div class="section-sub">${readyOrders.length} orders ready · ${tableIds.length} tables · ${otherReady.length} takeaway/delivery</div></div>
+    <button class="btn-outline" onclick="goToOrderBoard()">← Back to Orders Board</button>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
     <div>
@@ -3174,21 +3168,10 @@ function renderBilling(){
         </div>
         <p style="color:var(--text3);text-align:center;font-size:.85rem;margin:1.5rem 0">Generate a bill to preview</p>
       </div>
-      ${currentRole === 'Order Taker' ? `
-        <div style="margin-top:1rem;background:rgba(245,158,11,0.12);border:1.5px dashed var(--amber);border-radius:var(--radius2);padding:.85rem 1rem;text-align:center">
-          <div style="color:var(--amber);font-weight:700;font-size:.9rem;display:flex;align-items:center;justify-content:center;gap:.4rem">
-            🔒 Restricted Access — Order Taker View Mode
-          </div>
-          <div style="color:var(--text2);font-size:.78rem;margin-top:.25rem">
-            Order Takers can view customer bill totals. Printing invoices and settling receipts are restricted to Manager/Admin.
-          </div>
-        </div>
-      ` : `
-        <div style="display:flex;gap:.5rem;margin-top:1rem;justify-content:center;flex-wrap:wrap">
-          <button type="button" class="btn-outline" style="flex:1; min-width:140px; padding:.85rem; font-size:.92rem; font-weight:700; border:2px solid var(--blue); color:var(--blue); background:rgba(74,144,217,0.12); border-radius:var(--radius2); cursor:pointer;" onclick="printCustomerInvoice()">📄 Customer Invoice</button>
-          <button type="button" class="print-btn" style="flex:1.2; min-width:170px; padding:.85rem; font-size:.92rem; font-weight:700" onclick="printBill()">🖨️ Print Receipt & Settle</button>
-        </div>
-      `}
+      <div style="display:flex;gap:.5rem;margin-top:1rem;justify-content:center;flex-wrap:wrap">
+        <button type="button" class="btn-outline" style="flex:1; min-width:140px; padding:.85rem; font-size:.92rem; font-weight:700; border:2px solid var(--blue); color:var(--blue); background:rgba(74,144,217,0.12); border-radius:var(--radius2); cursor:pointer;" onclick="printCustomerInvoice()">📄 Customer Invoice</button>
+        <button type="button" class="print-btn" style="flex:1.2; min-width:170px; padding:.85rem; font-size:.92rem; font-weight:700" onclick="printBill()">🖨️ Print Receipt & Settle</button>
+      </div>
     </div>
   </div>`;
 }
@@ -3495,10 +3478,6 @@ function buildReceiptHtml(isCustomerInvoice = false) {
 }
 
 function printCustomerInvoice() {
-  if (currentRole === 'Order Taker') {
-    toast('Order Takers are restricted from printing invoices', 'error');
-    return;
-  }
   const billDisplay = document.getElementById('bill-display');
   if(!billDisplay || !currentBillKey){
     toast('Please generate a bill first','error'); return;
@@ -3529,10 +3508,6 @@ function printCustomerInvoice() {
 }
 
 function printBill(){
-  if (currentRole === 'Order Taker') {
-    toast('Order Takers are restricted from settling bills and printing receipts', 'error');
-    return;
-  }
   const billDisplay = document.getElementById('bill-display');
   if(!billDisplay || !currentBillKey){
     toast('Please generate a bill first','error'); return;
@@ -3855,12 +3830,8 @@ function downloadCSVFallback(content, fileName) {
 }
 
 async function finalizeSale(){
-  if (currentRole === 'Order Taker') {
-    toast('Order Takers are restricted from settling sales', 'error');
-    return;
-  }
   if(!currentBillKey){toast('No bill generated yet','error');return;}
-  const today = getTodayDateStr();
+  const today=new Date().toISOString().split('T')[0];
   const selectedPayment=document.getElementById('selected-payment')?.textContent?.replace('✓ ','').replace(' selected','').trim()||'Cash';
   const discPct=parseFloat(document.getElementById('discount-pct')?.value)||0;
   const perHeadRate=parseFloat(document.getElementById('per-head-rate')?.value)||0;
@@ -5004,18 +4975,18 @@ async function printEndDaySalesReport() {
 
 function renderFinanceOverview(){
   // ── Live computed stats from real salesLedger & expenseLedger ──
-  const today = getTodayDateStr();
+  const today = new Date().toISOString().split('T')[0];
   // Week: Mon–Sun of current week
   const now = new Date();
   const dayOfWeek = now.getDay(); // 0=Sun
   const monday = new Date(now); monday.setDate(now.getDate() - (dayOfWeek===0?6:dayOfWeek-1)); monday.setHours(0,0,0,0);
-  const monday_str = getLocalDateStr(monday);
+  const monday_str = monday.toISOString().split('T')[0];
   // Month: first day of current month
   const month_str = today.slice(0,7); // 'YYYY-MM'
 
-  const todaySales  = (Array.isArray(salesLedger) ? salesLedger : []).filter(s => s && s.date === today).reduce((a,s) => a + (Number(s.total) || 0), 0);
-  const weekSales   = (Array.isArray(salesLedger) ? salesLedger : []).filter(s => s && s.date >= monday_str && s.date <= today).reduce((a,s) => a + (Number(s.total) || 0), 0);
-  const monthSales  = (Array.isArray(salesLedger) ? salesLedger : []).filter(s => s && s.date && s.date.startsWith(month_str)).reduce((a,s) => a + (Number(s.total) || 0), 0);
+  const todaySales  = salesLedger.filter(s=>s.date===today).reduce((a,s)=>a+s.total,0);
+  const weekSales   = salesLedger.filter(s=>s.date>=monday_str&&s.date<=today).reduce((a,s)=>a+s.total,0);
+  const monthSales  = salesLedger.filter(s=>s.date.startsWith(month_str)).reduce((a,s)=>a+s.total,0);
 
   // Expenses today: expenseLedger + petty cash
   const expCats={};
@@ -5921,7 +5892,7 @@ async function saveToLocal() {
     if (supabaseClient) {
       const promises = [];
 
-      // Orders: sync active orders to Supabase
+      // Orders: sync active orders & clean settled/removed orders from Supabase
       const activeOrderIds = (orders || []).map(o => String(o.id));
       if (activeOrderIds.length > 0) {
         const orderRecords = orders.map(o => ({
@@ -5938,7 +5909,9 @@ async function saveToLocal() {
           customer_phone: o.customerPhone || '',
           customer_address: o.customerAddress || '',
         }));
-        promises.push(supabaseClient.from('orders').upsert(orderRecords).catch(e => console.warn('Orders sync warning:', e)));
+        promises.push(supabaseClient.from('orders').upsert(orderRecords));
+      } else {
+        promises.push(supabaseClient.from('orders').delete().neq('id', '___NONE___'));
       }
 
       // Tables
@@ -5951,10 +5924,10 @@ async function saveToLocal() {
           reserved_for: t.reservedFor || '',
           reserved_time: t.reservedTime || '',
         }));
-        promises.push(supabaseClient.from('tables').upsert(tableRecords).catch(e => console.warn('Tables sync warning:', e)));
+        promises.push(supabaseClient.from('tables').upsert(tableRecords));
       }
 
-      // Unpaid Bills: sync active bills to Supabase
+      // Unpaid Bills: sync active bills & clear settled bills from Supabase
       const activeBillKeys = Object.keys(unpaidBills || {});
       if (activeBillKeys.length > 0) {
         const billRecords = activeBillKeys.map(key => ({
@@ -5964,7 +5937,9 @@ async function saveToLocal() {
           time: unpaidBills[key].time || '',
           add_on_tickets: unpaidBills[key].addOnTickets || 0,
         }));
-        promises.push(supabaseClient.from('unpaid_bills').upsert(billRecords).catch(e => console.warn('Unpaid bills sync warning:', e)));
+        promises.push(supabaseClient.from('unpaid_bills').upsert(billRecords));
+      } else {
+        promises.push(supabaseClient.from('unpaid_bills').delete().neq('bill_key', '___NONE___'));
       }
 
       // Menu Categories
@@ -5976,22 +5951,22 @@ async function saveToLocal() {
       if (menuItems && menuItems.length > 0) {
         promises.push(supabaseClient.from('menu_items').upsert(menuItems.map(m => ({
           id: m.id, name: m.name, cat: m.cat, price: m.price || 0, discount: m.discount || 0,
-          desc: m.desc || '', img: m.img || '🍕', available: m.available !== false, variants: m.variants || []
-        }))).catch(e => console.warn('Supabase menu_items save warning:', e)));
+          desc_text: m.desc || '', img: m.img || '🍕', available: m.available !== false, variants: m.variants || []
+        }))));
       }
 
       // Deals
       if (deals && deals.length > 0) {
         promises.push(supabaseClient.from('deals').upsert(deals.map(d => ({
           id: d.id, name: d.name, category: d.category, items: d.items || [], price: d.price || 0, available: d.available !== false
-        }))).catch(e => console.warn('Supabase deals save warning:', e)));
+        }))));
       }
 
       // Inventory
       if (inventory && inventory.length > 0) {
         promises.push(supabaseClient.from('inventory').upsert(inventory.map(i => ({
           id: i.id, item: i.item || i.name || '', unit: i.unit || '', stock: i.stock || 0, min: i.min || 0, price: i.price || 0, last: i.last || ''
-        }))).catch(e => console.warn('Supabase inventory save warning:', e)));
+        }))));
       }
 
       // Employees
@@ -5999,14 +5974,14 @@ async function saveToLocal() {
         promises.push(supabaseClient.from('employees').upsert(employees.map(e => ({
           id: e.id, name: e.name, cnic: e.cnic || '', phone: e.phone || '', designation: e.designation || '', salary: e.salary || 0,
           status: e.status || 'Present', address: e.address || '', salary_payments: e.salaryPayments || [], advances: e.advances || [], attendance_log: e.attendanceLog || []
-        }))).catch(e => console.warn('Supabase employees save warning:', e)));
+        }))));
       }
 
       // Petty Cash
       if (pettyCash && pettyCash.length > 0) {
         promises.push(supabaseClient.from('petty_cash').upsert(pettyCash.map(p => ({
           id: p.id, name: p.name || '', category: p.category || 'Misc', amount: p.amount || 0, date: p.date || '', notes: p.notes || ''
-        }))).catch(e => console.warn('Supabase petty_cash save warning:', e)));
+        }))));
       }
 
       // Sales Ledger
@@ -6015,14 +5990,14 @@ async function saveToLocal() {
           id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: s.total || 0,
           payment: s.payment || '', waiter: s.waiter || '', discount: s.discount || 0, per_head: s.perHead || 0,
           order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || ''
-        }))).catch(e => console.warn('Supabase sales_ledger save warning:', e)));
+        }))));
       }
 
       // Expense Ledger
       if (expenseLedger && expenseLedger.length > 0) {
         promises.push(supabaseClient.from('expense_ledger').upsert(expenseLedger.map(e => ({
           date: e.date || '', category: e.category || '', amount: e.amount || 0, description: e.description || '', meta: e.meta || {}
-        }))).catch(e => console.warn('Supabase expense_ledger save warning:', e)));
+        }))));
       }
 
       // Cancelled Orders
@@ -6031,20 +6006,13 @@ async function saveToLocal() {
           id: String(c.id), date: c.date || '', time: c.time || '', order_id: String(c.orderId || ''),
           table_id: String(c.table || ''), order_type: c.orderType || 'Dine-in', items: c.items || [],
           cost: c.cost || 0, waiter: c.waiter || '', cancel_type: c.cancelType || 'Partial'
-        }))).catch(e => console.warn('Supabase cancelled_orders save warning:', e)));
-      }
-
-      // App Users
-      if (appUsers && appUsers.length > 0) {
-        promises.push(supabaseClient.from('app_users').upsert(appUsers.map(u => ({
-          username: u.username, password: u.password, role: u.role || 'Admin', name: u.name || ''
-        }))).catch(e => console.warn('Supabase app_users save warning:', e)));
+        }))));
       }
 
       // Settings
       promises.push(supabaseClient.from('settings').upsert([
         { key: 'nextPettyId', value: { nextPettyId } }
-      ]).catch(e => console.warn('Supabase settings save warning:', e)));
+      ]));
 
       await Promise.all(promises);
       console.log('☁️ Synced all tables to Supabase Cloud DB ✓');
@@ -6404,8 +6372,6 @@ async function loadFromLocal() {
     // 3. Supabase Cloud Sync (Cloud DB)
     if (!supabaseClient) initSupabaseFromStorage();
     if (supabaseClient) {
-      const fetchSafe = (promise) => promise.catch(err => { console.warn('Supabase query error:', err); return { data: null }; });
-
       const [
         { data: cloudOrders },
         { data: cloudTables },
@@ -6419,23 +6385,21 @@ async function loadFromLocal() {
         { data: cloudSales },
         { data: cloudExp },
         { data: cloudCancelled },
-        { data: cloudSettings },
-        { data: cloudUsers }
+        { data: cloudSettings }
       ] = await Promise.all([
-        fetchSafe(supabaseClient.from('orders').select('*').neq('status', 'completed')),
-        fetchSafe(supabaseClient.from('tables').select('*').order('id', { ascending: true })),
-        fetchSafe(supabaseClient.from('unpaid_bills').select('*')),
-        fetchSafe(supabaseClient.from('menu_items').select('*').order('id', { ascending: true })),
-        fetchSafe(supabaseClient.from('menu_categories').select('*')),
-        fetchSafe(supabaseClient.from('deals').select('*').order('id', { ascending: true })),
-        fetchSafe(supabaseClient.from('inventory').select('*').order('id', { ascending: true })),
-        fetchSafe(supabaseClient.from('employees').select('*').order('id', { ascending: true })),
-        fetchSafe(supabaseClient.from('petty_cash').select('*').order('id', { ascending: true })),
-        fetchSafe(supabaseClient.from('sales_ledger').select('*')),
-        fetchSafe(supabaseClient.from('expense_ledger').select('*').order('id', { ascending: true })),
-        fetchSafe(supabaseClient.from('cancelled_orders').select('*')),
-        fetchSafe(supabaseClient.from('settings').select('*')),
-        fetchSafe(supabaseClient.from('app_users').select('*'))
+        supabaseClient.from('orders').select('*').neq('status', 'completed').order('created_at', { ascending: true }),
+        supabaseClient.from('tables').select('*').order('id', { ascending: true }),
+        supabaseClient.from('unpaid_bills').select('*'),
+        supabaseClient.from('menu_items').select('*').order('id', { ascending: true }),
+        supabaseClient.from('menu_categories').select('*').order('id', { ascending: true }),
+        supabaseClient.from('deals').select('*').order('id', { ascending: true }),
+        supabaseClient.from('inventory').select('*').order('id', { ascending: true }),
+        supabaseClient.from('employees').select('*').order('id', { ascending: true }),
+        supabaseClient.from('petty_cash').select('*').order('id', { ascending: true }),
+        supabaseClient.from('sales_ledger').select('*').order('created_at', { ascending: true }),
+        supabaseClient.from('expense_ledger').select('*').order('id', { ascending: true }),
+        supabaseClient.from('cancelled_orders').select('*').order('created_at', { ascending: false }),
+        supabaseClient.from('settings').select('*')
       ]);
 
       if (Array.isArray(cloudOrders)) {
@@ -6467,7 +6431,7 @@ async function loadFromLocal() {
       if (Array.isArray(cloudMenu) && cloudMenu.length > 0) {
         menuItems = cloudMenu.map(r => ({
           id: r.id, name: r.name, cat: r.cat, price: r.price, discount: r.discount || 0,
-          desc: r.desc || r.desc_text || r.description || '', img: r.img || '🍕', available: r.available, variants: r.variants || []
+          desc: r.desc_text || '', img: r.img || '🍕', available: r.available, variants: r.variants || []
         }));
       }
 
@@ -6523,14 +6487,6 @@ async function loadFromLocal() {
         }));
       }
 
-      if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
-        appUsers = cloudUsers.map(r => ({
-          username: r.username, password: r.password, role: r.role || 'Admin', name: r.name || ''
-        }));
-        const adminUser = appUsers.find(u => u.username && u.username.toLowerCase() === 'admin');
-        if (adminUser && adminUser.password) ADMIN_CREDENTIALS.password = adminUser.password;
-      }
-
       if (Array.isArray(cloudSettings) && cloudSettings.length > 0) {
         const pSetting = cloudSettings.find(s => s.key === 'nextPettyId');
         if (pSetting && pSetting.value && pSetting.value.nextPettyId) {
@@ -6539,15 +6495,6 @@ async function loadFromLocal() {
       }
 
       console.log('☁️ Loaded all tables from Supabase Cloud DB ✓');
-
-      if (typeof renderOrders === 'function') renderOrders();
-      if (typeof renderTables === 'function') renderTables();
-      if (typeof renderMenu === 'function') renderMenu();
-      if (typeof renderInventory === 'function') renderInventory();
-      if (typeof renderEmployees === 'function') renderEmployees();
-      if (typeof renderFinance === 'function') renderFinance();
-      if (typeof updateStats === 'function') updateStats();
-      if (typeof buildNav === 'function') buildNav();
     }
   } catch(e) { console.warn('Database load warning:', e); }
 }
@@ -6715,20 +6662,15 @@ async function pushAllDataToCloud() {
   }
 }
 
-// ── Auto Background Live Sync every 8 seconds ──
+// ── Auto Background Sync every 45 seconds ──
 setInterval(() => {
   if (supabaseClient) {
     loadFromLocal().then(() => {
       if (typeof renderOrders === 'function') renderOrders();
       if (typeof renderTables === 'function') renderTables();
-      if (typeof renderMenu === 'function') renderMenu();
-      if (typeof renderInventory === 'function') renderInventory();
-      if (typeof renderEmployees === 'function') renderEmployees();
-      if (typeof renderFinance === 'function') renderFinance();
-      if (typeof updateStats === 'function') updateStats();
     }).catch(err => console.warn('Periodic sync background error:', err));
   }
-}, 8000);
+}, 45000);
 
 // ── ONE-TIME MIGRATION: old localStorage data → SQLite ──
 // Runs once per install; marks itself done afterwards so it never re-runs
