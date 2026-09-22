@@ -5902,7 +5902,7 @@ async function saveToLocal() {
     if (supabaseClient) {
       const promises = [];
 
-      // Orders: sync active orders & clean settled/removed orders from Supabase
+      // Orders: sync active orders to Supabase
       const activeOrderIds = (orders || []).map(o => String(o.id));
       if (activeOrderIds.length > 0) {
         const orderRecords = orders.map(o => ({
@@ -5919,9 +5919,7 @@ async function saveToLocal() {
           customer_phone: o.customerPhone || '',
           customer_address: o.customerAddress || '',
         }));
-        promises.push(supabaseClient.from('orders').upsert(orderRecords));
-      } else {
-        promises.push(supabaseClient.from('orders').delete().neq('id', '___NONE___'));
+        promises.push(supabaseClient.from('orders').upsert(orderRecords).catch(e => console.warn('Orders sync warning:', e)));
       }
 
       // Tables
@@ -5934,10 +5932,10 @@ async function saveToLocal() {
           reserved_for: t.reservedFor || '',
           reserved_time: t.reservedTime || '',
         }));
-        promises.push(supabaseClient.from('tables').upsert(tableRecords));
+        promises.push(supabaseClient.from('tables').upsert(tableRecords).catch(e => console.warn('Tables sync warning:', e)));
       }
 
-      // Unpaid Bills: sync active bills & clear settled bills from Supabase
+      // Unpaid Bills: sync active bills to Supabase
       const activeBillKeys = Object.keys(unpaidBills || {});
       if (activeBillKeys.length > 0) {
         const billRecords = activeBillKeys.map(key => ({
@@ -5947,9 +5945,7 @@ async function saveToLocal() {
           time: unpaidBills[key].time || '',
           add_on_tickets: unpaidBills[key].addOnTickets || 0,
         }));
-        promises.push(supabaseClient.from('unpaid_bills').upsert(billRecords));
-      } else {
-        promises.push(supabaseClient.from('unpaid_bills').delete().neq('bill_key', '___NONE___'));
+        promises.push(supabaseClient.from('unpaid_bills').upsert(billRecords).catch(e => console.warn('Unpaid bills sync warning:', e)));
       }
 
       // Menu Categories
@@ -6691,15 +6687,20 @@ async function pushAllDataToCloud() {
   }
 }
 
-// ── Auto Background Sync every 45 seconds ──
+// ── Auto Background Live Sync every 8 seconds ──
 setInterval(() => {
   if (supabaseClient) {
     loadFromLocal().then(() => {
       if (typeof renderOrders === 'function') renderOrders();
       if (typeof renderTables === 'function') renderTables();
+      if (typeof renderMenu === 'function') renderMenu();
+      if (typeof renderInventory === 'function') renderInventory();
+      if (typeof renderEmployees === 'function') renderEmployees();
+      if (typeof renderFinance === 'function') renderFinance();
+      if (typeof updateStats === 'function') updateStats();
     }).catch(err => console.warn('Periodic sync background error:', err));
   }
-}, 45000);
+}, 8000);
 
 // ── ONE-TIME MIGRATION: old localStorage data → SQLite ──
 // Runs once per install; marks itself done afterwards so it never re-runs
