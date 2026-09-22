@@ -2995,7 +2995,7 @@ function renderBilling(){
     ordersView = 'new';
     return renderWaiter();
   }
-  const readyOrders=orders.filter(o=>o.status!=='pending');
+  const readyOrders=orders.filter(o=>o.status!=='completed');
   const dineInReady=readyOrders.filter(o=>(o.orderType||'Dine-in')==='Dine-in');
   const otherReady=readyOrders.filter(o=>o.orderType&&o.orderType!=='Dine-in');
   // Group dine-in orders by table to show merge option
@@ -3184,10 +3184,24 @@ let currentBillOrderType = 'Dine-in';
 
 function generateMergedBill(billKey,type,quiet=false){
   type = type || 'Dine-in';
-  const group = type==='Dine-in'
-    ? orders.filter(o=>o.status!=='pending'&&o.table===billKey)
-    : orders.filter(o=>o.status!=='pending'&&o.id===billKey);
-  if(group.length===0){ if(!quiet) toast('No ready orders found','error'); return; }
+  let group = type==='Dine-in'
+    ? orders.filter(o=>o.status!=='completed'&&o.table===billKey)
+    : orders.filter(o=>o.status!=='completed'&&o.id===billKey);
+  
+  if (group.length === 0 && unpaidBills && unpaidBills[billKey]) {
+    const ub = unpaidBills[billKey];
+    group = [{
+      id: ub.orderId || String(billKey),
+      table: type === 'Dine-in' ? billKey : null,
+      orderType: type,
+      items: ub.items || [],
+      customerPhone: '',
+      customerAddress: '',
+      waiter: ub.waiter || currentUser
+    }];
+  }
+
+  if(group.length===0){ if(!quiet) toast('No active orders found for billing','error'); return; }
   currentBillKey=billKey;
   currentBillOrderIds=group.map(o=>o.id);
   currentBillOrderType=type;
@@ -3195,13 +3209,13 @@ function generateMergedBill(billKey,type,quiet=false){
   // Merge all items, combining duplicates by name
   const mergedItems={};
   group.forEach(o=>{
-    o.items.forEach(i=>{
-      if(mergedItems[i.name]){mergedItems[i.name].qty+=i.qty;}
-      else{mergedItems[i.name]={...i};}
+    (o.items || []).forEach(i=>{
+      if(mergedItems[i.name]){mergedItems[i.name].qty+=(Number(i.qty)||0);}
+      else{mergedItems[i.name]={...i, qty: Number(i.qty)||0, price: Number(i.price)||0};}
     });
   });
   const items=Object.values(mergedItems);
-  const sub=items.reduce((a,i)=>a+i.qty*i.price,0);
+  const sub=items.reduce((a,i)=>a+(Number(i.qty)||0)*(Number(i.price)||0),0);
   const disc=parseFloat(document.getElementById('discount-pct')?.value)||0;
   const discAmt=Math.round(sub*disc/100);
   const perHeadRate=parseFloat(document.getElementById('per-head-rate')?.value)||0;
@@ -3507,83 +3521,6 @@ function printCustomerInvoice() {
   }
 }
 
-function printBill(){
-  const billDisplay = document.getElementById('bill-display');
-  if(!billDisplay || !currentBillKey){
-    toast('Please generate a bill first','error'); return;
-  }
-
-  const htmlContent = buildReceiptHtml(false); // false = Final Sales Receipt
-  if (!htmlContent) {
-    toast('No bill to print','error'); return;
-  }
-
-  const printerDevice = localStorage.getItem('hfc_printer_device') || '';
-  const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
-
-  if (window.api && window.api.printReceipt) {
-    toast('Printing final receipt & settling...', 'info');
-    window.api.printReceipt(htmlContent, {
-      silent: silentPrint,
-      deviceName: printerDevice || undefined
-    }).then(res => {
-      if (res && res.success) {
-        toast('Final receipt printed ✓');
-      } else {
-        toast('Thermal print completed ✓');
-      }
-    }).catch(() => {
-      fallbackPrintWindow(htmlContent, true);
-    });
-  } else {
-    fallbackPrintWindow(htmlContent, true);
-  }
-
-  finalizeSale();
-}
-
-async function fallbackPrintWindow(htmlContent, finalize = true) {
-  const printerDevice = localStorage.getItem('hfc_printer_device') || '';
-  try {
-    const res = await fetch('/api/print', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: htmlContent, deviceName: printerDevice, silent: true })
-    });
-    if (res.ok) {
-      toast('Printed directly ✓');
-      if (finalize) finalizeSale();
-      return;
-    }
-  } catch (e) {}
-
-  // Hidden background iframe (no popup window or popup screen)
-  let iframe = document.getElementById('hidden-print-iframe');
-  if (!iframe) {
-    iframe = document.createElement('iframe');
-    iframe.id = 'hidden-print-iframe';
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    document.body.appendChild(iframe);
-  }
-  const doc = iframe.contentWindow.document;
-  doc.open();
-  doc.write(htmlContent);
-  doc.close();
-  setTimeout(() => {
-    try {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-    } catch (e) {}
-  }, 200);
-  toast('Sent to printer ✓');
-  if (finalize) finalizeSale();
-}
-
 // ── DATABASE BACKUP ──
 async function performDbBackup() {
   if (!window.api || !window.api.backupDatabase) {
@@ -3829,6 +3766,102 @@ function downloadCSVFallback(content, fileName) {
   toast('CSV exported successfully ✓');
 }
 
+function printBill(){
+  const billDisplay = document.getElementById('bill-display');
+  if(!billDisplay || !currentBillKey){
+    toast('Please generate a bill first','error'); return;
+  }
+
+  const htmlContent = buildReceiptHtml(false); // false = Final Sales Receipt
+  if (!htmlContent) {
+    toast('No bill to print','error'); return;
+  }
+
+  const printerDevice = localStorage.getItem('hfc_printer_device') || '';
+  const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
+
+  if (window.api && window.api.printReceipt) {
+    toast('Printing final receipt & settling...', 'info');
+    window.api.printReceipt(htmlContent, {
+      silent: silentPrint,
+      deviceName: printerDevice || undefined
+    }).then(res => {
+      if (res && res.success) {
+        toast('Final receipt printed ✓');
+      } else {
+        toast('Thermal print completed ✓');
+      }
+    }).catch(() => {
+      fallbackPrintWindow(htmlContent, false);
+    });
+  } else {
+    fallbackPrintWindow(htmlContent, false);
+  }
+
+  finalizeSale();
+}
+
+async function fallbackPrintWindow(htmlContent, finalize = true) {
+  const printerDevice = localStorage.getItem('hfc_printer_device') || '';
+  try {
+    const res = await fetch('/api/print', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: htmlContent, deviceName: printerDevice, silent: true })
+    });
+    if (res.ok) {
+      toast('Printed directly ✓');
+      if (finalize) finalizeSale();
+      return;
+    }
+  } catch (e) {}
+
+  // Hidden background iframe (no popup window or popup screen)
+  let iframe = document.getElementById('hidden-print-iframe');
+  if (!iframe) {
+    iframe = document.createElement('iframe');
+    iframe.id = 'hidden-print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+  }
+  const doc = iframe.contentWindow.document;
+  doc.open();
+  doc.write(htmlContent);
+  doc.close();
+  setTimeout(() => {
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch (e) {}
+  }, 200);
+  toast('Sent to printer ✓');
+  if (finalize) finalizeSale();
+}
+
+// ── DATABASE BACKUP ──
+async function performDbBackup() {
+  if (!window.api || !window.api.backupDatabase) {
+    toast('Backup is available in Desktop App mode', 'error');
+    return;
+  }
+  try {
+    toast('Creating database backup...', 'info');
+    const result = await window.api.backupDatabase();
+    if (result && result.success) {
+      toast('Database backup saved to Desktop ✓');
+    } else {
+      toast('Backup failed: ' + (result?.error || 'Unknown error'), 'error');
+    }
+  } catch (err) {
+    toast('Backup error: ' + err.message, 'error');
+  }
+}
+
 async function finalizeSale(){
   if(!currentBillKey){toast('No bill generated yet','error');return;}
   const today=new Date().toISOString().split('T')[0];
@@ -3842,23 +3875,37 @@ async function finalizeSale(){
 
   const billKey=currentBillKey, orderIds=currentBillOrderIds, type=currentBillOrderType;
 
-  const group=orderIds.map(id=>orders.find(o=>o.id===id)).filter(Boolean);
+  let group=orderIds.map(id=>orders.find(o=>o.id===id)).filter(Boolean);
+  if (group.length === 0 && unpaidBills && unpaidBills[billKey]) {
+    const ub = unpaidBills[billKey];
+    group = [{
+      id: ub.orderId || String(billKey),
+      table: type === 'Dine-in' ? billKey : null,
+      orderType: type,
+      items: ub.items || [],
+      customerPhone: '',
+      customerAddress: '',
+      waiter: ub.waiter || currentUser
+    }];
+  }
+
   const mergedItems={};
-  group.forEach(o=>{ o.items.forEach(i=>{ if(mergedItems[i.name])mergedItems[i.name].qty+=i.qty; else mergedItems[i.name]={...i}; }); });
+  group.forEach(o=>{ (o.items || []).forEach(i=>{ if(mergedItems[i.name])mergedItems[i.name].qty+=(Number(i.qty)||0); else mergedItems[i.name]={...i, qty: Number(i.qty)||0, price: Number(i.price)||0}; }); });
   const items=Object.values(mergedItems);
-  const sub=items.reduce((a,i)=>a+i.qty*i.price,0);
+  const sub=items.reduce((a,i)=>a+(Number(i.qty)||0)*(Number(i.price)||0),0);
   const discAmt=Math.round(sub*discPct/100);
-  const total=Math.max(0, sub-discAmt+perHead+deliveryCharge);
+  const total=Number(Math.max(0, sub-discAmt+perHead+deliveryCharge)||0);
   const changeReturn=cashReceived>=total ? (cashReceived-total) : 0;
 
   const slId='SL'+String(salesLedger.length+1).padStart(3,'0');
   salesLedger.push({
     id:slId, date:today, table:type==='Dine-in'?billKey:null,
     orderType:type, customerPhone:group[0]?.customerPhone||'', customerAddress:group[0]?.customerAddress||'',
-    items, total,
+    items, total: Number(total || 0),
     payment:selectedPayment,
     waiter:group[0]?.waiter||currentUser,
-    discount:discPct, perHead, deliveryCharge, cashReceived, changeReturn
+    discount:discPct, perHead, deliveryCharge, cashReceived, changeReturn,
+    closed: 0, closeoutId: ''
   });
 
   if(API_CONNECTED){
@@ -3881,6 +3928,13 @@ async function finalizeSale(){
       if (type === 'Dine-in') {
         await supabaseClient.from('tables').upsert([{ id: billKey, status: 'available', persons: 0 }]);
       }
+      await supabaseClient.from('sales_ledger').upsert([{
+        id: slId, date: today, table_id: type === 'Dine-in' ? billKey : null,
+        items, total: Number(total || 0), payment: selectedPayment,
+        waiter: group[0]?.waiter || currentUser, discount: discPct, per_head: perHead,
+        order_type: type, customer_phone: group[0]?.customerPhone || '',
+        customer_address: group[0]?.customerAddress || ''
+      }]);
     } catch(e) { console.warn('Supabase cleanup warning:', e); }
   }
 
@@ -5980,23 +6034,25 @@ async function saveToLocal() {
       // Petty Cash
       if (pettyCash && pettyCash.length > 0) {
         promises.push(supabaseClient.from('petty_cash').upsert(pettyCash.map(p => ({
-          id: p.id, name: p.name || '', category: p.category || 'Misc', amount: p.amount || 0, date: p.date || '', notes: p.notes || ''
+          id: p.id, name: p.name || '', category: p.category || 'Misc', amount: Number(p.amount || 0), date: p.date || '', notes: p.notes || '',
+          closed: p.closed ? 1 : 0, closeout_id: p.closeoutId || ''
         }))));
       }
 
       // Sales Ledger
       if (salesLedger && salesLedger.length > 0) {
         promises.push(supabaseClient.from('sales_ledger').upsert(salesLedger.map(s => ({
-          id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: s.total || 0,
-          payment: s.payment || '', waiter: s.waiter || '', discount: s.discount || 0, per_head: s.perHead || 0,
-          order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || ''
+          id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: Number(s.total || 0),
+          payment: s.payment || '', waiter: s.waiter || '', discount: Number(s.discount || 0), per_head: Number(s.perHead || 0),
+          order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || '',
+          closed: s.closed ? 1 : 0, closeout_id: s.closeoutId || ''
         }))));
       }
 
       // Expense Ledger
       if (expenseLedger && expenseLedger.length > 0) {
         promises.push(supabaseClient.from('expense_ledger').upsert(expenseLedger.map(e => ({
-          date: e.date || '', category: e.category || '', amount: e.amount || 0, description: e.description || '', meta: e.meta || {}
+          date: e.date || '', category: e.category || '', amount: Number(e.amount || 0), description: e.description || '', meta: e.meta || {}
         }))));
       }
 
@@ -6005,7 +6061,8 @@ async function saveToLocal() {
         promises.push(supabaseClient.from('cancelled_orders').upsert(cancelledOrders.map(c => ({
           id: String(c.id), date: c.date || '', time: c.time || '', order_id: String(c.orderId || ''),
           table_id: String(c.table || ''), order_type: c.orderType || 'Dine-in', items: c.items || [],
-          cost: c.cost || 0, waiter: c.waiter || '', cancel_type: c.cancelType || 'Partial'
+          cost: Number(c.cost || 0), waiter: c.waiter || '', cancel_type: c.cancelType || 'Partial',
+          closed: c.closed ? 1 : 0, closeout_id: c.closeoutId || ''
         }))));
       }
 
@@ -6285,16 +6342,16 @@ async function loadFromLocal() {
 
         if (Array.isArray(inv)) inventory      = inv;
         if (Array.isArray(emp)) employees      = emp;
-        if (Array.isArray(pc))  pettyCash      = pc;
-        if (Array.isArray(sl))  salesLedger    = sl;
-        if (Array.isArray(el))  expenseLedger  = el;
+        if (Array.isArray(pc))  pettyCash      = pc.map(p => ({ ...p, amount: Number(p.amount||0), closed: !!p.closed, closeoutId: p.closeoutId || '' }));
+        if (Array.isArray(sl))  salesLedger    = sl.map(s => ({ ...s, total: Number(s.total||0), closed: !!s.closed, closeoutId: s.closeoutId || '' }));
+        if (Array.isArray(el))  expenseLedger  = el.map(e => ({ ...e, amount: Number(e.amount||0) }));
         if (Array.isArray(mi))  menuItems      = mi;
         if (Array.isArray(mc))  menuCategories = mc;
         if (Array.isArray(dl))  deals          = dl;
-        if (Array.isArray(tb))  tables         = tb;
+        if (Array.isArray(tb) && tb.length > 0)  tables = tb;
         if (Array.isArray(ord)) orders         = ord;
         if (ub && typeof ub === 'object') unpaidBills = ub;
-        if (Array.isArray(co))  cancelledOrders = co;
+        if (Array.isArray(co))  cancelledOrders = co.map(c => ({ ...c, cost: Number(c.cost||0), closed: !!c.closed, closeoutId: c.closeoutId || '' }));
         if (Array.isArray(dc))  dailyCloseouts = dc;
         if (Array.isArray(usr) && usr.length > 0) {
           appUsers = usr;
@@ -6320,15 +6377,15 @@ async function loadFromLocal() {
         const d = res.data;
         if (Array.isArray(d.inventory)) inventory      = d.inventory;
         if (Array.isArray(d.employees)) employees      = d.employees;
-        if (Array.isArray(d.pettyCash)) pettyCash      = d.pettyCash;
-        if (Array.isArray(d.salesLedger)) salesLedger  = d.salesLedger;
-        if (Array.isArray(d.expenseLedger)) expenseLedger = d.expenseLedger;
+        if (Array.isArray(d.pettyCash)) pettyCash      = d.pettyCash.map(p => ({ ...p, amount: Number(p.amount||0), closed: !!p.closed, closeoutId: p.closeoutId || '' }));
+        if (Array.isArray(d.salesLedger)) salesLedger  = d.salesLedger.map(s => ({ ...s, total: Number(s.total||0), closed: !!s.closed, closeoutId: s.closeoutId || '' }));
+        if (Array.isArray(d.expenseLedger)) expenseLedger = d.expenseLedger.map(e => ({ ...e, amount: Number(e.amount||0) }));
         if (Array.isArray(d.menuItems)) menuItems      = d.menuItems;
         if (Array.isArray(d.menuCategories)) menuCategories = d.menuCategories;
         if (Array.isArray(d.deals)) deals          = d.deals;
-        if (Array.isArray(d.tables)) tables         = d.tables;
+        if (Array.isArray(d.tables) && d.tables.length > 0) tables = d.tables;
         if (Array.isArray(d.orders)) orders         = d.orders;
-        if (Array.isArray(d.cancelledOrders)) cancelledOrders = d.cancelledOrders;
+        if (Array.isArray(d.cancelledOrders)) cancelledOrders = d.cancelledOrders.map(c => ({ ...c, cost: Number(c.cost||0), closed: !!c.closed, closeoutId: c.closeoutId || '' }));
         if (Array.isArray(d.dailyCloseouts)) dailyCloseouts = d.dailyCloseouts;
         if (Array.isArray(d.appUsers) && d.appUsers.length > 0) appUsers = d.appUsers;
         if (d.unpaidBills && typeof d.unpaidBills === 'object') unpaidBills = d.unpaidBills;
@@ -6370,10 +6427,10 @@ async function loadFromLocal() {
         if (localDl)  deals          = JSON.parse(localDl);
         if (localInv) inventory      = JSON.parse(localInv);
         if (localEmp) employees      = JSON.parse(localEmp);
-        if (localPc)  pettyCash      = JSON.parse(localPc);
-        if (localSl)  salesLedger    = JSON.parse(localSl);
-        if (localEl)  expenseLedger  = JSON.parse(localEl);
-        if (localCo)  cancelledOrders = JSON.parse(localCo);
+        if (localPc)  pettyCash      = (JSON.parse(localPc)||[]).map(p => ({ ...p, amount: Number(p.amount||0), closed: !!p.closed, closeoutId: p.closeoutId || '' }));
+        if (localSl)  salesLedger    = (JSON.parse(localSl)||[]).map(s => ({ ...s, total: Number(s.total||0), closed: !!s.closed, closeoutId: s.closeoutId || '' }));
+        if (localEl)  expenseLedger  = (JSON.parse(localEl)||[]).map(e => ({ ...e, amount: Number(e.amount||0) }));
+        if (localCo)  cancelledOrders = (JSON.parse(localCo)||[]).map(c => ({ ...c, cost: Number(c.cost||0), closed: !!c.closed, closeoutId: c.closeoutId || '' }));
         if (localDc)  dailyCloseouts = JSON.parse(localDc);
         if (localUsr) appUsers       = JSON.parse(localUsr);
         if (localPid) nextPettyId    = parseInt(localPid) || 1;
@@ -6423,10 +6480,10 @@ async function loadFromLocal() {
         supabaseClient.from('settings').select('*').catch(() => ({ data: null }))
       ]);
 
-      if (Array.isArray(cloudOrders)) {
+      if (Array.isArray(cloudOrders) && cloudOrders.length > 0) {
         orders = cloudOrders.map(r => ({
           id: r.id, table: r.table_id, items: r.items || [], status: r.status,
-          note: r.note, time: r.time, waiter: r.waiter, isAddOn: !!r.is_add_on, total: r.total,
+          note: r.note, time: r.time, waiter: r.waiter, isAddOn: !!r.is_add_on, total: Number(r.total || 0),
           orderType: r.order_type || 'Dine-in', customerPhone: r.customer_phone || '',
           customerAddress: r.customer_address || '',
         }));
@@ -6439,7 +6496,7 @@ async function loadFromLocal() {
         }));
       }
 
-      if (Array.isArray(cloudBills)) {
+      if (Array.isArray(cloudBills) && cloudBills.length > 0) {
         const ubObj = {};
         cloudBills.forEach(r => {
           ubObj[r.bill_key] = {
@@ -6482,37 +6539,40 @@ async function loadFromLocal() {
 
       if (Array.isArray(cloudPc) && cloudPc.length > 0) {
         pettyCash = cloudPc.map(r => ({
-          id: r.id, name: r.name, category: r.category, amount: r.amount || 0, date: r.date || '', notes: r.notes || ''
+          id: r.id, name: r.name, category: r.category, amount: Number(r.amount || 0), date: r.date || '', notes: r.notes || '',
+          closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
         }));
       }
 
       if (Array.isArray(cloudSales) && cloudSales.length > 0) {
         salesLedger = cloudSales.map(r => ({
-          id: r.id, date: r.date, table: r.table_id, items: r.items || [], total: r.total, payment: r.payment, waiter: r.waiter,
-          discount: r.discount || 0, perHead: r.per_head || 0, orderType: r.order_type || 'Dine-in',
-          customerPhone: r.customer_phone || '', customerAddress: r.customer_address || ''
+          id: r.id, date: r.date, table: r.table_id, items: r.items || [], total: Number(r.total || 0), payment: r.payment, waiter: r.waiter,
+          discount: Number(r.discount || 0), perHead: Number(r.per_head || 0), orderType: r.order_type || 'Dine-in',
+          customerPhone: r.customer_phone || '', customerAddress: r.customer_address || '',
+          closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
         }));
       }
 
       if (Array.isArray(cloudExp) && cloudExp.length > 0) {
         expenseLedger = cloudExp.map(r => ({
-          id: r.id, date: r.date, category: r.category, amount: r.amount || 0, description: r.description || '', meta: r.meta || {}
+          id: r.id, date: r.date, category: r.category, amount: Number(r.amount || 0), description: r.description || '', meta: r.meta || {}
         }));
       }
 
       if (Array.isArray(cloudCancelled) && cloudCancelled.length > 0) {
         cancelledOrders = cloudCancelled.map(r => ({
           id: r.id, date: r.date, time: r.time, orderId: r.order_id, table: r.table_id,
-          orderType: r.order_type || 'Dine-in', items: r.items || [], cost: r.cost || 0,
-          waiter: r.waiter || '', cancelType: r.cancel_type || 'Partial'
+          orderType: r.order_type || 'Dine-in', items: r.items || [], cost: Number(r.cost || 0),
+          waiter: r.waiter || '', cancelType: r.cancel_type || 'Partial',
+          closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
         }));
       }
 
       if (Array.isArray(cloudDailyCloseouts) && cloudDailyCloseouts.length > 0) {
         dailyCloseouts = cloudDailyCloseouts.map(r => ({
-          id: r.id, date: r.date, time: r.time, totalSales: r.total_sales || 0,
-          salesCount: r.sales_count || 0, totalExpenses: r.total_expenses || 0, totalProfit: r.total_profit || 0,
-          totalCancelledCost: r.total_cancelled_cost || 0, cancelledCount: r.cancelled_count || 0,
+          id: r.id, date: r.date, time: r.time, totalSales: Number(r.total_sales || 0),
+          salesCount: Number(r.sales_count || 0), totalExpenses: Number(r.total_expenses || 0), totalProfit: Number(r.total_profit || 0),
+          totalCancelledCost: Number(r.total_cancelled_cost || 0), cancelledCount: Number(r.cancelled_count || 0),
           closedBy: r.closed_by || 'Admin', timestamp: r.timestamp || 0
         }));
       }
@@ -6531,6 +6591,18 @@ async function loadFromLocal() {
       }
 
       console.log('☁️ Loaded all tables from Supabase Cloud DB ✓');
+    }
+
+    // Default tables fallback if empty
+    if (!tables || tables.length === 0) {
+      tables = Array.from({ length: 12 }, (_, i) => ({
+        id: i + 1,
+        status: 'available',
+        persons: 0,
+        seats: 4,
+        reservedFor: '',
+        reservedTime: ''
+      }));
     }
   } catch(e) { console.warn('Database load warning:', e); }
 }
@@ -6666,23 +6738,45 @@ async function pushAllDataToCloud() {
     // Petty Cash
     if (pettyCash && pettyCash.length > 0) {
       await supabaseClient.from('petty_cash').upsert(pettyCash.map(p => ({
-        id: p.id, name: p.name || '', category: p.category || 'Misc', amount: p.amount || 0, date: p.date || '', notes: p.notes || ''
+        id: p.id, name: p.name || '', category: p.category || 'Misc', amount: Number(p.amount || 0), date: p.date || '', notes: p.notes || '',
+        closed: p.closed ? 1 : 0, closeout_id: p.closeoutId || ''
       })));
     }
 
     // Sales Ledger
     if (salesLedger && salesLedger.length > 0) {
       await supabaseClient.from('sales_ledger').upsert(salesLedger.map(s => ({
-        id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: s.total || 0,
-        payment: s.payment || '', waiter: s.waiter || '', discount: s.discount || 0, per_head: s.perHead || 0,
-        order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || ''
+        id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: Number(s.total || 0),
+        payment: s.payment || '', waiter: s.waiter || '', discount: Number(s.discount || 0), per_head: Number(s.perHead || 0),
+        order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || '',
+        closed: s.closed ? 1 : 0, closeout_id: s.closeoutId || ''
       })));
     }
 
     // Expense Ledger
     if (expenseLedger && expenseLedger.length > 0) {
       await supabaseClient.from('expense_ledger').upsert(expenseLedger.map(e => ({
-        date: e.date || '', category: e.category || '', amount: e.amount || 0, description: e.description || '', meta: e.meta || {}
+        date: e.date || '', category: e.category || '', amount: Number(e.amount || 0), description: e.description || '', meta: e.meta || {}
+      })));
+    }
+
+    // Cancelled Orders
+    if (cancelledOrders && cancelledOrders.length > 0) {
+      await supabaseClient.from('cancelled_orders').upsert(cancelledOrders.map(c => ({
+        id: String(c.id), date: c.date || '', time: c.time || '', order_id: String(c.orderId || ''),
+        table_id: String(c.table || ''), order_type: c.orderType || 'Dine-in', items: c.items || [],
+        cost: Number(c.cost || 0), waiter: c.waiter || '', cancel_type: c.cancelType || 'Partial',
+        closed: c.closed ? 1 : 0, closeout_id: c.closeoutId || ''
+      })));
+    }
+
+    // Daily Closeouts
+    if (dailyCloseouts && dailyCloseouts.length > 0) {
+      await supabaseClient.from('daily_closeouts').upsert(dailyCloseouts.map(c => ({
+        id: String(c.id), date: c.date || '', time: c.time || '', total_sales: Number(c.totalSales || 0),
+        sales_count: Number(c.salesCount || 0), total_expenses: Number(c.totalExpenses || 0), total_profit: Number(c.totalProfit || 0),
+        total_cancelled_cost: Number(c.totalCancelledCost || 0), cancelled_count: Number(c.cancelledCount || 0),
+        closed_by: c.closedBy || '', timestamp: c.timestamp || Date.now()
       })));
     }
 

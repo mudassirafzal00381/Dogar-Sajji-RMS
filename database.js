@@ -137,6 +137,28 @@ function migrateColumns() {
   if (!salesCols.includes('customerAddress')) {
     db.exec(`ALTER TABLE sales_ledger ADD COLUMN customerAddress TEXT DEFAULT ''`);
   }
+  if (!salesCols.includes('closed')) {
+    db.exec(`ALTER TABLE sales_ledger ADD COLUMN closed INTEGER DEFAULT 0`);
+  }
+  if (!salesCols.includes('closeoutId')) {
+    db.exec(`ALTER TABLE sales_ledger ADD COLUMN closeoutId TEXT DEFAULT ''`);
+  }
+
+  const pettyCols = db.prepare('PRAGMA table_info(petty_cash)').all().map(c => c.name);
+  if (!pettyCols.includes('closed')) {
+    db.exec(`ALTER TABLE petty_cash ADD COLUMN closed INTEGER DEFAULT 0`);
+  }
+  if (!pettyCols.includes('closeoutId')) {
+    db.exec(`ALTER TABLE petty_cash ADD COLUMN closeoutId TEXT DEFAULT ''`);
+  }
+
+  const cancelCols = db.prepare('PRAGMA table_info(cancelled_orders)').all().map(c => c.name);
+  if (!cancelCols.includes('closed')) {
+    db.exec(`ALTER TABLE cancelled_orders ADD COLUMN closed INTEGER DEFAULT 0`);
+  }
+  if (!cancelCols.includes('closeoutId')) {
+    db.exec(`ALTER TABLE cancelled_orders ADD COLUMN closeoutId TEXT DEFAULT ''`);
+  }
 }
 
 function createSchema() {
@@ -227,12 +249,14 @@ function createSchema() {
     );
 
     CREATE TABLE IF NOT EXISTS petty_cash (
-      id       INTEGER PRIMARY KEY,
-      name     TEXT,
-      category TEXT,
-      amount   REAL DEFAULT 0,
-      date     TEXT,
-      notes    TEXT DEFAULT ''
+      id         INTEGER PRIMARY KEY,
+      name       TEXT,
+      category   TEXT,
+      amount     REAL DEFAULT 0,
+      date       TEXT,
+      notes      TEXT DEFAULT '',
+      closed     INTEGER DEFAULT 0,
+      closeoutId TEXT DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS sales_ledger (
@@ -247,7 +271,9 @@ function createSchema() {
       perHead         REAL DEFAULT 0,
       orderType       TEXT DEFAULT 'Dine-in',
       customerPhone   TEXT DEFAULT '',
-      customerAddress TEXT DEFAULT ''
+      customerAddress TEXT DEFAULT '',
+      closed          INTEGER DEFAULT 0,
+      closeoutId      TEXT DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS expense_ledger (
@@ -291,7 +317,9 @@ function createSchema() {
       items      TEXT NOT NULL DEFAULT '[]',
       cost       REAL DEFAULT 0,
       waiter     TEXT DEFAULT '',
-      cancelType TEXT DEFAULT 'Partial'
+      cancelType TEXT DEFAULT 'Partial',
+      closed     INTEGER DEFAULT 0,
+      closeoutId TEXT DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS daily_closeouts (
@@ -494,16 +522,22 @@ function saveEmployees(employees) {
 
 // ── petty cash ──
 function getPettyCash() {
-  return db.prepare('SELECT * FROM petty_cash ORDER BY id').all();
+  return db.prepare('SELECT * FROM petty_cash ORDER BY id').all().map(r => ({
+    ...r,
+    amount: Number(r.amount || 0),
+    closed: !!r.closed,
+    closeoutId: r.closeoutId || ''
+  }));
 }
 function savePettyCash(pettyCash) {
   replaceAll(
     'petty_cash', pettyCash,
-    `INSERT INTO petty_cash (id,name,category,amount,date,notes)
-     VALUES (@id,@name,@category,@amount,@date,@notes)`,
+    `INSERT INTO petty_cash (id,name,category,amount,date,notes,closed,closeoutId)
+     VALUES (@id,@name,@category,@amount,@date,@notes,@closed,@closeoutId)`,
     p => ({
       id: p.id, name: p.name || '', category: p.category || 'Misc',
-      amount: p.amount || 0, date: p.date || '', notes: p.notes || '',
+      amount: Number(p.amount || 0), date: p.date || '', notes: p.notes || '',
+      closed: p.closed ? 1 : 0, closeoutId: p.closeoutId || ''
     })
   );
 }
@@ -512,22 +546,26 @@ function savePettyCash(pettyCash) {
 function getSalesLedger() {
   return db.prepare('SELECT * FROM sales_ledger ORDER BY rowid').all().map(r => ({
     id: r.id, date: r.date, table: r.table_id, items: JSON.parse(r.items || '[]'),
-    total: r.total, payment: r.payment, waiter: r.waiter, discount: r.discount, perHead: r.perHead,
+    total: Number(r.total || 0), payment: r.payment, waiter: r.waiter, discount: Number(r.discount || 0), perHead: Number(r.perHead || 0),
     orderType: r.orderType || 'Dine-in', customerPhone: r.customerPhone || '',
     customerAddress: r.customerAddress || '',
+    closed: !!r.closed,
+    closeoutId: r.closeoutId || ''
   }));
 }
 function saveSalesLedger(salesLedger) {
   replaceAll(
     'sales_ledger', salesLedger,
-    `INSERT INTO sales_ledger (id,date,table_id,items,total,payment,waiter,discount,perHead,orderType,customerPhone,customerAddress)
-     VALUES (@id,@date,@table_id,@items,@total,@payment,@waiter,@discount,@perHead,@orderType,@customerPhone,@customerAddress)`,
+    `INSERT INTO sales_ledger (id,date,table_id,items,total,payment,waiter,discount,perHead,orderType,customerPhone,customerAddress,closed,closeoutId)
+     VALUES (@id,@date,@table_id,@items,@total,@payment,@waiter,@discount,@perHead,@orderType,@customerPhone,@customerAddress,@closed,@closeoutId)`,
     s => ({
       id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: JSON.stringify(s.items || []),
-      total: s.total || 0, payment: s.payment || '', waiter: s.waiter || '',
-      discount: s.discount || 0, perHead: s.perHead || 0,
+      total: Number(s.total || 0), payment: s.payment || '', waiter: s.waiter || '',
+      discount: Number(s.discount || 0), perHead: Number(s.perHead || 0),
       orderType: s.orderType || 'Dine-in', customerPhone: s.customerPhone || '',
       customerAddress: s.customerAddress || '',
+      closed: s.closed ? 1 : 0,
+      closeoutId: s.closeoutId || ''
     })
   );
 }
@@ -535,7 +573,9 @@ function saveSalesLedger(salesLedger) {
 // ── expense ledger (shape not finalized upstream yet; kept flexible) ──
 function getExpenseLedger() {
   return db.prepare('SELECT * FROM expense_ledger ORDER BY id').all().map(r => ({
-    ...r, meta: JSON.parse(r.meta || '{}'),
+    ...r,
+    amount: Number(r.amount || 0),
+    meta: JSON.parse(r.meta || '{}'),
   }));
 }
 function saveExpenseLedger(expenseLedger) {
@@ -547,7 +587,7 @@ function saveExpenseLedger(expenseLedger) {
     for (const e of rows) {
       const { date, category, amount, description, ...rest } = e;
       insert.run({
-        date: date || '', category: category || '', amount: amount || 0,
+        date: date || '', category: category || '', amount: Number(amount || 0),
         description: description || '', meta: JSON.stringify(rest),
       });
     }
@@ -588,19 +628,21 @@ function getCancelledOrders() {
   return db.prepare('SELECT * FROM cancelled_orders ORDER BY rowid DESC').all().map(r => ({
     id: r.id, date: r.date, time: r.time, orderId: r.order_id, table: r.table_id,
     orderType: r.orderType || 'Dine-in', items: JSON.parse(r.items || '[]'),
-    cost: r.cost || 0, waiter: r.waiter || '', cancelType: r.cancelType || 'Partial'
+    cost: Number(r.cost || 0), waiter: r.waiter || '', cancelType: r.cancelType || 'Partial',
+    closed: !!r.closed, closeoutId: r.closeoutId || ''
   }));
 }
 function saveCancelledOrders(cancelledOrders) {
   replaceAll(
     'cancelled_orders', cancelledOrders,
-    `INSERT INTO cancelled_orders (id,date,time,order_id,table_id,orderType,items,cost,waiter,cancelType)
-     VALUES (@id,@date,@time,@order_id,@table_id,@orderType,@items,@cost,@waiter,@cancelType)`,
+    `INSERT INTO cancelled_orders (id,date,time,order_id,table_id,orderType,items,cost,waiter,cancelType,closed,closeoutId)
+     VALUES (@id,@date,@time,@order_id,@table_id,@orderType,@items,@cost,@waiter,@cancelType,@closed,@closeoutId)`,
     c => ({
       id: String(c.id), date: c.date || '', time: c.time || '', order_id: String(c.orderId || ''),
       table_id: c.table ?? null, orderType: c.orderType || 'Dine-in',
-      items: JSON.stringify(c.items || []), cost: c.cost || 0,
-      waiter: c.waiter || '', cancelType: c.cancelType || 'Partial'
+      items: JSON.stringify(c.items || []), cost: Number(c.cost || 0),
+      waiter: c.waiter || '', cancelType: c.cancelType || 'Partial',
+      closed: c.closed ? 1 : 0, closeoutId: c.closeoutId || ''
     })
   );
 }
