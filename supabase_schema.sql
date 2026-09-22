@@ -297,3 +297,16 @@ BEGIN
     END IF;
   END LOOP;
 END $$;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- SAFE RETROFIT MIGRATION FOR PREVIOUSLY CREATED SUPABASE TABLES
+-- ══════════════════════════════════════════════════════════════════════════════
+ALTER TABLE IF EXISTS public.petty_cash ADD COLUMN IF NOT EXISTS closed INT DEFAULT 0;
+ALTER TABLE IF EXISTS public.petty_cash ADD COLUMN IF NOT EXISTS closeout_id TEXT DEFAULT '';
+
+ALTER TABLE IF EXISTS public.sales_ledger ADD COLUMN IF NOT EXISTS closed INT DEFAULT 0;
+ALTER TABLE IF EXISTS public.sales_ledger ADD COLUMN IF NOT EXISTS closeout_id TEXT DEFAULT '';
+
+ALTER TABLE IF EXISTS public.cancelled_orders ADD COLUMN IF NOT EXISTS closed INT DEFAULT 0;
+ALTER TABLE IF EXISTS public.cancelled_orders ADD COLUMN IF NOT EXISTS closeout_id TEXT DEFAULT '';
+

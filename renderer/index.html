@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Dogar Sajji & Restaurant RMS</title>
 <link rel="icon" href="../logo.png" type="image/png">
-<script src="supabase.min.js"></script>
+<link rel="shortcut icon" href="../logo.png" type="image/png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-config.js"></script>
 <style>
@@ -904,17 +904,7 @@ async function loadAppUsers(){
   ];
 
   try {
-    if (supabaseClient) {
-      const { data: cloudUsers, error: eUsers } = await supabaseClient.from('app_users').select('*');
-      if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
-        appUsers = cloudUsers.map(r => ({
-          username: r.username,
-          password: r.password,
-          role: r.role || 'Admin',
-          name: r.name || r.username
-        }));
-      }
-    } else if (window.api && window.api.getAppUsers) {
+    if (window.api && window.api.getAppUsers) {
       const dbUsers = await window.api.getAppUsers();
       if (Array.isArray(dbUsers) && dbUsers.length > 0) {
         appUsers = dbUsers;
@@ -3897,28 +3887,22 @@ async function finalizeSale(){
   if (supabaseClient) {
     try {
       if (type === 'Dine-in') {
-        await supabaseClient.from('orders').delete().eq('table_id', billKey).catch(()=>{});
-        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey)).catch(()=>{});
-        await supabaseClient.from('tables').upsert([{ id: billKey, status: 'available', persons: 0 }]).catch(()=>{});
+        await supabaseClient.from('orders').delete().eq('table_id', billKey);
+        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey));
+        await supabaseClient.from('tables').upsert([{ id: billKey, status: 'available', persons: 0 }]);
       } else {
         const delIds = [String(billKey), ...orderIds.map(String)];
-        await supabaseClient.from('orders').delete().in('id', delIds).catch(()=>{});
-        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey)).catch(()=>{});
+        await supabaseClient.from('orders').delete().in('id', delIds);
+        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey));
       }
-      const slRecord = {
+      await supabaseClient.from('sales_ledger').upsert([{
         id: slId, date: today, table_id: type === 'Dine-in' ? billKey : null,
         items, total: Number(total || 0), payment: selectedPayment,
         waiter: group[0]?.waiter || currentUser, discount: discPct, per_head: perHead,
         order_type: type, customer_phone: group[0]?.customerPhone || '',
         customer_address: group[0]?.customerAddress || '',
         closed: 0, closeout_id: ''
-      };
-      const slRes = await supabaseClient.from('sales_ledger').upsert([slRecord]);
-      if (slRes && slRes.error) {
-        delete slRecord.closed;
-        delete slRecord.closeout_id;
-        await supabaseClient.from('sales_ledger').upsert([slRecord]).catch(()=>{});
-      }
+      }]);
     } catch(e) { console.warn('Supabase cleanup warning:', e); }
   }
 
@@ -5782,20 +5766,13 @@ function updateCloudBadge(isConnected) {
 }
 
 function initSupabaseFromStorage() {
-  const defaultUrl = "https://obeaiypgrowizbvbzgcr.supabase.co";
-  const defaultKey = "sb_publishable_14-7OBHbQB-jv6JUBEoWQQ__c9zNMEs";
-
-  const rawUrl = localStorage.getItem('dogar_supabase_url') || window.SUPABASE_URL || defaultUrl;
-  const key = localStorage.getItem('dogar_supabase_key') || window.SUPABASE_KEY || defaultKey;
+  const rawUrl = localStorage.getItem('dogar_supabase_url') || window.SUPABASE_URL || '';
+  const key = localStorage.getItem('dogar_supabase_key') || window.SUPABASE_KEY || '';
   const url = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
-
-  window.SUPABASE_URL = url;
-  window.SUPABASE_KEY = key;
-
   if (window.supabase && url && key && url.includes('supabase.co')) {
     try {
       supabaseClient = window.supabase.createClient(url, key);
-      console.log('⚡ Central Supabase Online Database Connected ✓');
+      console.log('⚡ Supabase Cloud Database Client Connected ✓');
       setupRealtimeSubscriptions();
       updateCloudBadge(true);
       return true;
@@ -5809,21 +5786,19 @@ function setupRealtimeSubscriptions() {
   if (!supabaseClient) return;
   try {
     const handleDbChange = async (tableName) => {
-      console.log(`🔔 Live ${tableName} change received from Central Supabase DB`);
+      console.log(`🔔 Live ${tableName} change received from Cloud DB`);
       await loadFromLocal();
-      if (typeof renderDashboard === 'function' && activeSection === 'dashboard') renderDashboard();
-      if (typeof renderOrders === 'function' && activeSection === 'orders') renderOrders();
-      if (typeof renderTables === 'function' && activeSection === 'tables') renderTables();
-      if (typeof renderMenu === 'function' && activeSection === 'menu') renderMenu();
-      if (typeof renderInventory === 'function' && activeSection === 'inventory') renderInventory();
-      if (typeof renderEmployees === 'function' && activeSection === 'employees') renderEmployees();
-      if (typeof renderFinance === 'function' && activeSection === 'finance') renderFinance();
-      if (typeof renderKitchen === 'function' && activeSection === 'kitchen') renderKitchen();
+      if (typeof renderOrders === 'function') renderOrders();
+      if (typeof renderTables === 'function') renderTables();
+      if (typeof renderMenu === 'function') renderMenu();
+      if (typeof renderInventory === 'function') renderInventory();
+      if (typeof renderEmployees === 'function') renderEmployees();
+      if (typeof renderFinance === 'function') renderFinance();
       if (typeof updateStats === 'function') updateStats();
     };
 
     supabaseClient
-      .channel('dogar-sajji-realtime-all')
+      .channel('hfc-all-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => handleDbChange('orders'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => handleDbChange('tables'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'unpaid_bills' }, () => handleDbChange('unpaid_bills'))
@@ -5835,9 +5810,6 @@ function setupRealtimeSubscriptions() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'petty_cash' }, () => handleDbChange('petty_cash'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_ledger' }, () => handleDbChange('sales_ledger'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expense_ledger' }, () => handleDbChange('expense_ledger'))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cancelled_orders' }, () => handleDbChange('cancelled_orders'))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_closeouts' }, () => handleDbChange('daily_closeouts'))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_users' }, () => handleDbChange('app_users'))
       .subscribe();
   } catch(e) { console.warn('Realtime subscription error:', e); }
 }
@@ -5922,34 +5894,14 @@ async function saveToLocal(force = false) {
     console.warn('⚠️ Prevented saveToLocal: Initial data load is not complete yet.');
     return;
   }
-
-  // 1. ALWAYS persist to browser LocalStorage IMMEDIATELY (guarantees persistence on Vercel & web refreshes)
   try {
-    localStorage.setItem('dogar_web_inventory', JSON.stringify(inventory || []));
-    localStorage.setItem('dogar_web_employees', JSON.stringify(employees || []));
-    localStorage.setItem('dogar_web_petty_cash', JSON.stringify(pettyCash || []));
-    localStorage.setItem('dogar_web_sales_ledger', JSON.stringify(salesLedger || []));
-    localStorage.setItem('dogar_web_expense_ledger', JSON.stringify(expenseLedger || []));
-    localStorage.setItem('dogar_web_menu_items', JSON.stringify(menuItems || []));
-    localStorage.setItem('dogar_web_menu_cats', JSON.stringify(menuCategories || []));
-    localStorage.setItem('dogar_web_deals', JSON.stringify(deals || []));
-    localStorage.setItem('dogar_web_tables', JSON.stringify(tables || []));
-    localStorage.setItem('dogar_web_orders', JSON.stringify(orders || []));
-    localStorage.setItem('dogar_web_unpaid_bills', JSON.stringify(unpaidBills || {}));
-    localStorage.setItem('dogar_web_app_users', JSON.stringify(appUsers || []));
-    localStorage.setItem('dogar_web_cancelled_orders', JSON.stringify(cancelledOrders || []));
-    localStorage.setItem('dogar_web_daily_closeouts', JSON.stringify(dailyCloseouts || []));
-    localStorage.setItem('dogar_web_next_petty_id', String(nextPettyId || 1));
-  } catch(e) { console.warn('LocalStorage save error:', e); }
+    const currentSupConfig = {
+      url: localStorage.getItem('dogar_supabase_url') || window.SUPABASE_URL || '',
+      key: localStorage.getItem('dogar_supabase_key') || window.SUPABASE_KEY || '',
+    };
 
-  const currentSupConfig = {
-    url: localStorage.getItem('dogar_supabase_url') || window.SUPABASE_URL || '',
-    key: localStorage.getItem('dogar_supabase_key') || window.SUPABASE_KEY || '',
-  };
-
-  // 2. Electron SQLite (Desktop app mode)
-  if (window.api && window.api.saveOrders) {
-    try {
+    // 1. Electron SQLite (Desktop app mode)
+    if (window.api && window.api.saveOrders) {
       await Promise.all([
         window.api.saveInventory(inventory),
         window.api.saveEmployees(employees),
@@ -5968,24 +5920,20 @@ async function saveToLocal(force = false) {
         window.api.saveSettings({ nextPettyId, supabaseConfig: currentSupConfig }),
       ]);
       console.log('💾 Data saved to local SQLite database');
-    } catch(err) {
-      console.warn('SQLite save warning:', err);
     }
-  }
 
-  // 3. Central Backend REST API (Web Browser Profile A / Profile B / Mobile)
-  try {
+    // 2. Central Backend REST API (Web Browser Profile A / Profile B / Mobile)
     await apiCall('save-all', 'POST', {
       inventory, employees, pettyCash, salesLedger, expenseLedger,
       menuItems, menuCategories, deals, tables, orders, unpaidBills, appUsers, cancelledOrders, dailyCloseouts,
       settings: { nextPettyId, supabaseConfig: currentSupConfig }
     });
-  } catch(e) {}
 
-  // 4. Supabase Cloud DB (Web app mode / Cross-Device Sync)
-  if (supabaseClient) {
-    try {
-      // Orders
+    // 3. Supabase Cloud DB (Web app mode / Cross-Device Sync)
+    if (supabaseClient) {
+      const promises = [];
+
+      // Orders: sync active orders & clean settled/removed orders from Supabase
       const activeOrderIds = (orders || []).map(o => String(o.id));
       if (activeOrderIds.length > 0) {
         const orderRecords = orders.map(o => ({
@@ -6002,24 +5950,25 @@ async function saveToLocal(force = false) {
           customer_phone: o.customerPhone || '',
           customer_address: o.customerAddress || '',
         }));
-        await supabaseClient.from('orders').upsert(orderRecords).catch(e => console.warn('Supabase orders save:', e));
+        promises.push(supabaseClient.from('orders').upsert(orderRecords));
       } else {
-        await supabaseClient.from('orders').delete().neq('id', '___NONE___').catch(e => console.warn('Supabase orders clear:', e));
+        promises.push(supabaseClient.from('orders').delete().neq('id', '___NONE___'));
       }
 
       // Tables
       if (tables && tables.length > 0) {
-        await supabaseClient.from('tables').upsert(tables.map(t => ({
+        const tableRecords = tables.map(t => ({
           id: t.id,
           status: t.status || 'available',
           persons: t.persons || 0,
           seats: t.seats || 4,
           reserved_for: t.reservedFor || '',
           reserved_time: t.reservedTime || '',
-        }))).catch(e => console.warn('Supabase tables save:', e));
+        }));
+        promises.push(supabaseClient.from('tables').upsert(tableRecords));
       }
 
-      // Unpaid Bills
+      // Unpaid Bills: sync active bills & clear settled bills from Supabase
       const activeBillKeys = Object.keys(unpaidBills || {});
       if (activeBillKeys.length > 0) {
         const billRecords = activeBillKeys.map(key => ({
@@ -6029,133 +5978,159 @@ async function saveToLocal(force = false) {
           time: unpaidBills[key].time || '',
           add_on_tickets: unpaidBills[key].addOnTickets || 0,
         }));
-        await supabaseClient.from('unpaid_bills').upsert(billRecords).catch(e => console.warn('Supabase unpaid_bills save:', e));
+        promises.push(supabaseClient.from('unpaid_bills').upsert(billRecords));
       } else {
-        await supabaseClient.from('unpaid_bills').delete().neq('bill_key', '___NONE___').catch(e => console.warn('Supabase unpaid_bills clear:', e));
+        promises.push(supabaseClient.from('unpaid_bills').delete().neq('bill_key', '___NONE___'));
       }
 
       // Menu Categories
       if (menuCategories && menuCategories.length > 0) {
-        await supabaseClient.from('menu_categories').upsert(menuCategories.map(c => ({ name: c })), { onConflict: 'name' }).catch(e => console.warn('Supabase cats save:', e));
+        promises.push(supabaseClient.from('menu_categories').upsert(menuCategories.map(c => ({ name: c })), { onConflict: 'name' }));
       }
 
       // Menu Items
       if (menuItems && menuItems.length > 0) {
-        await supabaseClient.from('menu_items').upsert(menuItems.map(m => ({
+        promises.push(supabaseClient.from('menu_items').upsert(menuItems.map(m => ({
           id: m.id, name: m.name, cat: m.cat, price: m.price || 0, discount: m.discount || 0,
           desc_text: m.desc || '', img: m.img || '🍕', available: m.available !== false, variants: m.variants || []
-        }))).catch(e => console.warn('Supabase items save:', e));
+        }))));
       }
 
       // Deals
       if (deals && deals.length > 0) {
-        await supabaseClient.from('deals').upsert(deals.map(d => ({
+        promises.push(supabaseClient.from('deals').upsert(deals.map(d => ({
           id: d.id, name: d.name, category: d.category, items: d.items || [], price: d.price || 0, available: d.available !== false
-        }))).catch(e => console.warn('Supabase deals save:', e));
+        }))));
       }
 
       // Inventory
       if (inventory && inventory.length > 0) {
-        await supabaseClient.from('inventory').upsert(inventory.map(i => ({
+        promises.push(supabaseClient.from('inventory').upsert(inventory.map(i => ({
           id: i.id, item: i.item || i.name || '', unit: i.unit || '', stock: i.stock || 0, min: i.min || 0, price: i.price || 0, last: i.last || ''
-        }))).catch(e => console.warn('Supabase inv save:', e));
+        }))));
       }
 
       // Employees
       if (employees && employees.length > 0) {
-        await supabaseClient.from('employees').upsert(employees.map(e => ({
+        promises.push(supabaseClient.from('employees').upsert(employees.map(e => ({
           id: e.id, name: e.name, cnic: e.cnic || '', phone: e.phone || '', designation: e.designation || '', salary: e.salary || 0,
           status: e.status || 'Present', address: e.address || '', salary_payments: e.salaryPayments || [], advances: e.advances || [], attendance_log: e.attendanceLog || []
-        }))).catch(e => console.warn('Supabase emp save:', e));
+        }))));
       }
 
-      // Petty Cash (with fallback if closed column is not yet in Supabase schema)
+      // Helper for resilient Supabase upsert with automatic schema fallback
+      const safeSupabaseUpsert = async (table, records, fallbackRecords) => {
+        if (!records || records.length === 0) return;
+        try {
+          const res = await supabaseClient.from(table).upsert(records);
+          if (res && res.error) {
+            console.warn(`Supabase ${table} primary upsert notice:`, res.error.message);
+            if (fallbackRecords && (res.error.message.includes('column') || res.error.message.includes('schema cache'))) {
+              const res2 = await supabaseClient.from(table).upsert(fallbackRecords);
+              if (res2 && res2.error) console.warn(`Supabase ${table} fallback upsert notice:`, res2.error.message);
+            }
+          }
+        } catch (err) {
+          console.warn(`Supabase ${table} exception:`, err);
+        }
+      };
+
+      // Petty Cash
       if (pettyCash && pettyCash.length > 0) {
-        const pcWithClose = pettyCash.map(p => ({
+        const pcFull = pettyCash.map(p => ({
           id: p.id, name: p.name || '', category: p.category || 'Misc', amount: Number(p.amount || 0), date: p.date || '', notes: p.notes || '',
           closed: p.closed ? 1 : 0, closeout_id: p.closeoutId || ''
         }));
-        const pcRes = await supabaseClient.from('petty_cash').upsert(pcWithClose);
-        if (pcRes && pcRes.error) {
-          const pcWithoutClose = pettyCash.map(p => ({
-            id: p.id, name: p.name || '', category: p.category || 'Misc', amount: Number(p.amount || 0), date: p.date || '', notes: p.notes || ''
-          }));
-          await supabaseClient.from('petty_cash').upsert(pcWithoutClose).catch(e => console.warn('Supabase petty cash fallback save:', e));
-        }
+        const pcBase = pettyCash.map(p => ({
+          id: p.id, name: p.name || '', category: p.category || 'Misc', amount: Number(p.amount || 0), date: p.date || '', notes: p.notes || ''
+        }));
+        promises.push(safeSupabaseUpsert('petty_cash', pcFull, pcBase));
       }
 
-      // Sales Ledger (with fallback if closed column is not yet in Supabase schema)
+      // Sales Ledger
       if (salesLedger && salesLedger.length > 0) {
-        const salesWithClose = salesLedger.map(s => ({
+        const slFull = salesLedger.map(s => ({
           id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: Number(s.total || 0),
           payment: s.payment || '', waiter: s.waiter || '', discount: Number(s.discount || 0), per_head: Number(s.perHead || 0),
           order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || '',
           closed: s.closed ? 1 : 0, closeout_id: s.closeoutId || ''
         }));
-        const salesRes = await supabaseClient.from('sales_ledger').upsert(salesWithClose);
-        if (salesRes && salesRes.error) {
-          const salesWithoutClose = salesLedger.map(s => ({
-            id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: Number(s.total || 0),
-            payment: s.payment || '', waiter: s.waiter || '', discount: Number(s.discount || 0), per_head: Number(s.perHead || 0),
-            order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || ''
-          }));
-          await supabaseClient.from('sales_ledger').upsert(salesWithoutClose).catch(e => console.warn('Supabase sales fallback save:', e));
-        }
+        const slBase = salesLedger.map(s => ({
+          id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: Number(s.total || 0),
+          payment: s.payment || '', waiter: s.waiter || '', discount: Number(s.discount || 0), per_head: Number(s.perHead || 0),
+          order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || ''
+        }));
+        promises.push(safeSupabaseUpsert('sales_ledger', slFull, slBase));
       }
 
       // Expense Ledger
       if (expenseLedger && expenseLedger.length > 0) {
-        await supabaseClient.from('expense_ledger').upsert(expenseLedger.map(e => ({
+        promises.push(supabaseClient.from('expense_ledger').upsert(expenseLedger.map(e => ({
           date: e.date || '', category: e.category || '', amount: Number(e.amount || 0), description: e.description || '', meta: e.meta || {}
-        }))).catch(e => console.warn('Supabase exp save:', e));
+        }))));
       }
 
-      // Cancelled Orders (with fallback if closed column is not yet in Supabase schema)
+      // Cancelled Orders
       if (cancelledOrders && cancelledOrders.length > 0) {
-        const canWithClose = cancelledOrders.map(c => ({
+        const canFull = cancelledOrders.map(c => ({
           id: String(c.id), date: c.date || '', time: c.time || '', order_id: String(c.orderId || ''),
           table_id: String(c.table || ''), order_type: c.orderType || 'Dine-in', items: c.items || [],
           cost: Number(c.cost || 0), waiter: c.waiter || '', cancel_type: c.cancelType || 'Partial',
           closed: c.closed ? 1 : 0, closeout_id: c.closeoutId || ''
         }));
-        const canRes = await supabaseClient.from('cancelled_orders').upsert(canWithClose);
-        if (canRes && canRes.error) {
-          const canWithoutClose = cancelledOrders.map(c => ({
-            id: String(c.id), date: c.date || '', time: c.time || '', order_id: String(c.orderId || ''),
-            table_id: String(c.table || ''), order_type: c.orderType || 'Dine-in', items: c.items || [],
-            cost: Number(c.cost || 0), waiter: c.waiter || '', cancel_type: c.cancelType || 'Partial'
-          }));
-          await supabaseClient.from('cancelled_orders').upsert(canWithoutClose).catch(e => console.warn('Supabase cancel fallback save:', e));
-        }
+        const canBase = cancelledOrders.map(c => ({
+          id: String(c.id), date: c.date || '', time: c.time || '', order_id: String(c.orderId || ''),
+          table_id: String(c.table || ''), order_type: c.orderType || 'Dine-in', items: c.items || [],
+          cost: Number(c.cost || 0), waiter: c.waiter || '', cancel_type: c.cancelType || 'Partial'
+        }));
+        promises.push(safeSupabaseUpsert('cancelled_orders', canFull, canBase));
       }
 
       // App Users
       if (appUsers && appUsers.length > 0) {
-        await supabaseClient.from('app_users').upsert(appUsers.map(u => ({
+        promises.push(supabaseClient.from('app_users').upsert(appUsers.map(u => ({
           username: u.username, password: u.password, role: u.role || 'Admin', name: u.name || ''
-        }))).catch(e => console.warn('Supabase app_users save warning:', e));
+        }))).catch(e => console.warn('Supabase app_users save warning:', e)));
       }
 
       // Daily Closeouts
       if (dailyCloseouts && dailyCloseouts.length > 0) {
-        await supabaseClient.from('daily_closeouts').upsert(dailyCloseouts.map(c => ({
-          id: String(c.id), date: c.date || '', time: c.time || '', total_sales: c.totalSales || 0,
-          sales_count: c.salesCount || 0, total_expenses: c.totalExpenses || 0, total_profit: c.totalProfit || 0,
-          total_cancelled_cost: c.totalCancelledCost || 0, cancelled_count: c.cancelledCount || 0,
+        promises.push(supabaseClient.from('daily_closeouts').upsert(dailyCloseouts.map(c => ({
+          id: String(c.id), date: c.date || '', time: c.time || '', total_sales: Number(c.totalSales || 0),
+          sales_count: Number(c.salesCount || 0), total_expenses: Number(c.totalExpenses || 0), totalProfit: Number(c.totalProfit || 0),
+          total_cancelled_cost: Number(c.totalCancelledCost || 0), cancelled_count: Number(c.cancelledCount || 0),
           closed_by: c.closedBy || '', timestamp: c.timestamp || Date.now()
-        }))).catch(e => console.warn('Supabase daily_closeouts save warning:', e));
+        }))).catch(e => console.warn('Supabase daily_closeouts save warning:', e)));
       }
 
       // Settings
-      await supabaseClient.from('settings').upsert([
+      promises.push(supabaseClient.from('settings').upsert([
         { key: 'nextPettyId', value: { nextPettyId } }
-      ]).catch(e => console.warn('Supabase settings save warning:', e));
+      ]).catch(e => console.warn('Supabase settings save warning:', e)));
 
+      await Promise.all(promises);
       console.log('☁️ Synced all tables to Supabase Cloud DB ✓');
-    } catch(err) {
-      console.warn('Supabase sync warning:', err);
     }
-  }
+
+    // 4. Always update Web Browser LocalStorage as immediate fallback (for Vercel & Web refreshes)
+    try {
+      localStorage.setItem('dogar_web_inventory', JSON.stringify(inventory || []));
+      localStorage.setItem('dogar_web_employees', JSON.stringify(employees || []));
+      localStorage.setItem('dogar_web_petty_cash', JSON.stringify(pettyCash || []));
+      localStorage.setItem('dogar_web_sales_ledger', JSON.stringify(salesLedger || []));
+      localStorage.setItem('dogar_web_expense_ledger', JSON.stringify(expenseLedger || []));
+      localStorage.setItem('dogar_web_menu_items', JSON.stringify(menuItems || []));
+      localStorage.setItem('dogar_web_menu_cats', JSON.stringify(menuCategories || []));
+      localStorage.setItem('dogar_web_deals', JSON.stringify(deals || []));
+      localStorage.setItem('dogar_web_tables', JSON.stringify(tables || []));
+      localStorage.setItem('dogar_web_orders', JSON.stringify(orders || []));
+      localStorage.setItem('dogar_web_unpaid_bills', JSON.stringify(unpaidBills || {}));
+      localStorage.setItem('dogar_web_app_users', JSON.stringify(appUsers || []));
+      localStorage.setItem('dogar_web_cancelled_orders', JSON.stringify(cancelledOrders || []));
+      localStorage.setItem('dogar_web_daily_closeouts', JSON.stringify(dailyCloseouts || []));
+      localStorage.setItem('dogar_web_next_petty_id', String(nextPettyId || 1));
+    } catch(e) { console.warn('LocalStorage web fallback save:', e); }
+  } catch(e) { console.warn('Database save warning:', e); }
 }
 
 
@@ -6360,229 +6335,326 @@ async function resetToDogarSajjiMenu() {
 
 async function loadFromLocal() {
   try {
-    // ALWAYS initialize Supabase client first using canonical project config
-    if (!supabaseClient) initSupabaseFromStorage();
+    let loadedFromCentral = false;
 
-    let loadedFromSupabase = false;
-
-    // 1. SUPABASE IS THE SINGLE SOURCE OF TRUTH FOR ALL PCs, DEVICES & VERCEL
-    if (supabaseClient) {
+    // 1. Electron SQLite (Desktop app mode)
+    if (window.api && typeof window.api.getMenuItems === 'function') {
       try {
-        const [
-          { data: cloudOrders, error: eOrders },
-          { data: cloudTables, error: eTables },
-          { data: cloudBills, error: eBills },
-          { data: cloudMenu, error: eMenu },
-          { data: cloudCats, error: eCats },
-          { data: cloudDeals, error: eDeals },
-          { data: cloudInv, error: eInv },
-          { data: cloudEmp, error: eEmp },
-          { data: cloudPc, error: ePc },
-          { data: cloudSales, error: eSales },
-          { data: cloudExp, error: eExp },
-          { data: cloudCancelled, error: eCancelled },
-          { data: cloudDailyCloseouts, error: eDailyCloseouts },
-          { data: cloudUsers, error: eUsers },
-          { data: cloudSettings, error: eSettings }
-        ] = await Promise.all([
-          supabaseClient.from('orders').select('*').neq('status', 'completed').order('created_at', { ascending: true }),
-          supabaseClient.from('tables').select('*').order('id', { ascending: true }),
-          supabaseClient.from('unpaid_bills').select('*'),
-          supabaseClient.from('menu_items').select('*').order('id', { ascending: true }),
-          supabaseClient.from('menu_categories').select('*').order('id', { ascending: true }),
-          supabaseClient.from('deals').select('*').order('id', { ascending: true }),
-          supabaseClient.from('inventory').select('*').order('id', { ascending: true }),
-          supabaseClient.from('employees').select('*').order('id', { ascending: true }),
-          supabaseClient.from('petty_cash').select('*').order('id', { ascending: true }),
-          supabaseClient.from('sales_ledger').select('*').order('created_at', { ascending: true }),
-          supabaseClient.from('expense_ledger').select('*').order('id', { ascending: true }),
-          supabaseClient.from('cancelled_orders').select('*').order('created_at', { ascending: false }),
-          supabaseClient.from('daily_closeouts').select('*').order('timestamp', { ascending: false }),
-          supabaseClient.from('app_users').select('*'),
-          supabaseClient.from('settings').select('*')
+        await migrateLocalStorageIfNeeded();
+        const [inv, emp, pc, sl, el, mi, mc, dl, tb, ord, ub, settings, usr, co, dc] = await Promise.all([
+          window.api.getInventory(),
+          window.api.getEmployees(),
+          window.api.getPettyCash(),
+          window.api.getSalesLedger(),
+          window.api.getExpenseLedger(),
+          window.api.getMenuItems(),
+          window.api.getMenuCategories(),
+          window.api.getDeals(),
+          window.api.getTables(),
+          window.api.getOrders(),
+          window.api.getUnpaidBills(),
+          window.api.getSettings(),
+          window.api.getAppUsers(),
+          window.api.getCancelledOrders ? window.api.getCancelledOrders() : Promise.resolve([]),
+          window.api.getDailyCloseouts ? window.api.getDailyCloseouts() : Promise.resolve([])
         ]);
 
-        if (Array.isArray(cloudMenu) && cloudMenu.length > 0) {
-          menuItems = cloudMenu.map(r => ({
-            id: r.id, name: r.name, cat: r.cat, price: Number(r.price || 0), discount: Number(r.discount || 0),
-            desc: r.desc_text || '', img: r.img || '🍕', available: r.available !== false, variants: r.variants || []
-          }));
+        if (Array.isArray(inv)) inventory      = inv;
+        if (Array.isArray(emp)) employees      = emp;
+        if (Array.isArray(pc))  pettyCash      = pc.map(p => ({ ...p, amount: Number(p.amount||0), closed: !!p.closed, closeoutId: p.closeoutId || '' }));
+        if (Array.isArray(sl))  salesLedger    = sl.map(s => ({ ...s, total: Number(s.total||0), closed: !!s.closed, closeoutId: s.closeoutId || '' }));
+        if (Array.isArray(el))  expenseLedger  = el.map(e => ({ ...e, amount: Number(e.amount||0) }));
+        if (Array.isArray(mi) && mi.length > 0)  menuItems      = mi;
+        if (Array.isArray(mc) && mc.length > 0)  menuCategories = mc;
+        if (Array.isArray(dl))  deals          = dl;
+        if (Array.isArray(tb) && tb.length > 0)  tables = tb;
+        if (Array.isArray(ord)) orders         = ord;
+        if (ub && typeof ub === 'object') unpaidBills = ub;
+        if (Array.isArray(co))  cancelledOrders = co.map(c => ({ ...c, cost: Number(c.cost||0), closed: !!c.closed, closeoutId: c.closeoutId || '' }));
+        if (Array.isArray(dc))  dailyCloseouts = dc;
+        if (Array.isArray(usr) && usr.length > 0) {
+          appUsers = usr;
+          const adminUser = appUsers.find(u => u.username.toLowerCase() === 'admin');
+          if (adminUser) ADMIN_CREDENTIALS.password = adminUser.password;
         }
-        if (Array.isArray(cloudCats) && cloudCats.length > 0) {
-          menuCategories = cloudCats.map(r => r.name);
-        }
-        if (Array.isArray(cloudDeals)) {
-          deals = cloudDeals.map(r => ({
-            id: r.id, name: r.name, category: r.category, items: r.items || [], price: Number(r.price || 0), available: r.available !== false
-          }));
-        }
-        if (Array.isArray(cloudTables) && cloudTables.length > 0) {
-          tables = cloudTables.map(r => ({
-            id: r.id, status: r.status || 'available', persons: r.persons || 0, seats: r.seats || 4,
-            reservedFor: r.reserved_for || '', reservedTime: r.reserved_time || ''
-          }));
-        }
-        if (Array.isArray(cloudOrders)) {
-          orders = cloudOrders.map(r => ({
-            id: String(r.id), table: r.table_id, items: r.items || [], status: r.status || 'pending',
-            note: r.note || '', time: r.time || '', waiter: r.waiter || '', isAddOn: !!r.is_add_on, total: Number(r.total || 0),
-            orderType: r.order_type || 'Dine-in', customerPhone: r.customer_phone || '', customerAddress: r.customer_address || ''
-          }));
-        }
-        if (Array.isArray(cloudBills)) {
-          const ubObj = {};
-          cloudBills.forEach(r => {
-            ubObj[r.bill_key] = {
-              orderId: r.order_id, items: r.items || [], time: r.time || '', addOnTickets: r.add_on_tickets || 0
-            };
-          });
-          unpaidBills = ubObj;
-        }
-        if (Array.isArray(cloudInv)) {
-          inventory = cloudInv.map(r => ({
-            id: r.id, item: r.item || r.name || '', unit: r.unit || '', stock: Number(r.stock || 0), min: Number(r.min || 0), price: Number(r.price || 0), last: r.last || ''
-          }));
-        }
-        if (Array.isArray(cloudEmp)) {
-          employees = cloudEmp.map(r => ({
-            id: r.id, name: r.name, cnic: r.cnic || '', phone: r.phone || '', designation: r.designation || '', salary: Number(r.salary || 0),
-            status: r.status || 'Present', address: r.address || '', salaryPayments: r.salary_payments || [], advances: r.advances || [], attendanceLog: r.attendance_log || []
-          }));
-        }
-        if (Array.isArray(cloudPc)) {
-          pettyCash = cloudPc.map(r => ({
-            id: r.id, name: r.name, category: r.category, amount: Number(r.amount || 0), date: r.date || '', notes: r.notes || '',
-            closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
-          }));
-        }
-        if (Array.isArray(cloudSales)) {
-          salesLedger = cloudSales.map(r => ({
-            id: String(r.id), date: r.date || '', table: r.table_id, items: r.items || [], total: Number(r.total || 0),
-            payment: r.payment || '', waiter: r.waiter || '', discount: Number(r.discount || 0), perHead: Number(r.per_head || 0),
-            orderType: r.order_type || 'Dine-in', customerPhone: r.customer_phone || '', customerAddress: r.customer_address || '',
-            closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
-          }));
-        }
-        if (Array.isArray(cloudExp)) {
-          expenseLedger = cloudExp.map(r => ({
-            id: r.id, date: r.date || '', category: r.category || '', amount: Number(r.amount || 0), description: r.description || '', meta: r.meta || {}
-          }));
-        }
-        if (Array.isArray(cloudCancelled)) {
-          cancelledOrders = cloudCancelled.map(r => ({
-            id: String(r.id), date: r.date || '', time: r.time || '', orderId: String(r.order_id || ''),
-            table: r.table_id, orderType: r.order_type || 'Dine-in', items: r.items || [], cost: Number(r.cost || 0),
-            waiter: r.waiter || '', cancelType: r.cancel_type || 'Partial', closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
-          }));
-        }
-        if (Array.isArray(cloudDailyCloseouts)) {
-          dailyCloseouts = cloudDailyCloseouts.map(r => ({
-            id: String(r.id), date: r.date || '', time: r.time || '', totalSales: Number(r.total_sales || 0),
-            salesCount: Number(r.sales_count || 0), totalExpenses: Number(r.total_expenses || 0), totalProfit: Number(r.total_profit || 0),
-            totalCancelledCost: Number(r.total_cancelled_cost || 0), cancelledCount: Number(r.cancelled_count || 0),
-            closedBy: r.closed_by || '', timestamp: r.timestamp || Date.now()
-          }));
-        }
-        if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
-          appUsers = cloudUsers.map(r => ({
-            username: r.username, password: r.password, role: r.role || 'Admin', name: r.name || ''
-          }));
-        }
-        if (Array.isArray(cloudSettings) && cloudSettings.length > 0) {
-          const pSetting = cloudSettings.find(s => s.key === 'nextPettyId');
-          if (pSetting && pSetting.value && pSetting.value.nextPettyId) {
-            nextPettyId = pSetting.value.nextPettyId;
-          }
+        if (settings && settings.nextPettyId != null) nextPettyId = settings.nextPettyId;
+        if (settings && settings.supabaseConfig) {
+          if (settings.supabaseConfig.url) window.SUPABASE_URL = settings.supabaseConfig.url;
+          if (settings.supabaseConfig.key) window.SUPABASE_KEY = settings.supabaseConfig.key;
         }
 
-        console.log('⚡ Loaded all live data from Central Supabase Database ✓');
-        loadedFromSupabase = true;
-
-        // Mirror to local SQLite / localStorage as offline cache only
-        if (window.api && typeof window.api.saveOrders === 'function') {
-          Promise.all([
-            window.api.saveMenuItems(menuItems),
-            window.api.saveMenuCategories(menuCategories),
-            window.api.saveTables(tables),
-            window.api.saveOrders(orders),
-            window.api.saveSalesLedger(salesLedger),
-            window.api.saveInventory(inventory),
-            window.api.saveEmployees(employees),
-            window.api.savePettyCash(pettyCash),
-            window.api.saveExpenseLedger(expenseLedger),
-            window.api.saveCancelledOrders ? window.api.saveCancelledOrders(cancelledOrders) : Promise.resolve(),
-            window.api.saveDailyCloseouts ? window.api.saveDailyCloseouts(dailyCloseouts) : Promise.resolve(),
-            window.api.saveAppUsers(appUsers)
-          ]).catch(()=>{});
-        }
+        console.log('✅ Loaded data from SQLite database ✓');
+        loadedFromCentral = true;
       } catch (err) {
-        console.warn('Supabase cloud fetch warning, falling back to local cache:', err);
+        console.warn('SQLite load warning:', err);
       }
     }
 
-    // 2. Fallback to Local Cache ONLY if Supabase could not be reached (e.g. PC is offline)
-    if (!loadedFromSupabase) {
-      if (window.api && typeof window.api.getMenuItems === 'function') {
-        try {
-          const [inv, emp, pc, sl, el, mi, mc, dl, tb, ord, ub, settings, usr, co, dc] = await Promise.all([
-            window.api.getInventory(), window.api.getEmployees(), window.api.getPettyCash(),
-            window.api.getSalesLedger(), window.api.getExpenseLedger(), window.api.getMenuItems(),
-            window.api.getMenuCategories(), window.api.getDeals(), window.api.getTables(),
-            window.api.getOrders(), window.api.getUnpaidBills(), window.api.getSettings(),
-            window.api.getAppUsers(),
-            window.api.getCancelledOrders ? window.api.getCancelledOrders() : Promise.resolve([]),
-            window.api.getDailyCloseouts ? window.api.getDailyCloseouts() : Promise.resolve([])
-          ]);
-          if (Array.isArray(inv) && inv.length > 0) inventory = inv;
-          if (Array.isArray(emp) && emp.length > 0) employees = emp;
-          if (Array.isArray(pc) && pc.length > 0)  pettyCash = pc;
-          if (Array.isArray(sl) && sl.length > 0)  salesLedger = sl;
-          if (Array.isArray(el) && el.length > 0)  expenseLedger = el;
-          if (Array.isArray(mi) && mi.length > 0)  menuItems = mi;
-          if (Array.isArray(mc) && mc.length > 0)  menuCategories = mc;
-          if (Array.isArray(dl) && dl.length > 0)  deals = dl;
-          if (Array.isArray(tb) && tb.length > 0)  tables = tb;
-          if (Array.isArray(ord) && ord.length > 0) orders = ord;
-          if (ub && typeof ub === 'object') unpaidBills = ub;
-          if (Array.isArray(co) && co.length > 0)  cancelledOrders = co;
-          if (Array.isArray(dc) && dc.length > 0)  dailyCloseouts = dc;
-          if (Array.isArray(usr) && usr.length > 0) appUsers = usr;
-        } catch (e) {}
-      } else {
-        // LocalStorage offline fallback
-        try {
-          const localOrd = localStorage.getItem('dogar_web_orders');
-          const localTb  = localStorage.getItem('dogar_web_tables');
-          const localMi  = localStorage.getItem('dogar_web_menu_items');
-          const localMc  = localStorage.getItem('dogar_web_menu_cats');
-          const localSl  = localStorage.getItem('dogar_web_sales_ledger');
-          const localInv = localStorage.getItem('dogar_web_inventory');
-          const localEmp = localStorage.getItem('dogar_web_employees');
-          const localPc  = localStorage.getItem('dogar_web_petty_cash');
-          const localEl  = localStorage.getItem('dogar_web_expense_ledger');
-          const localCo  = localStorage.getItem('dogar_web_cancelled_orders');
-          const localDc  = localStorage.getItem('dogar_web_daily_closeouts');
-          const localUsr = localStorage.getItem('dogar_web_app_users');
-          if (localOrd) orders = JSON.parse(localOrd);
-          if (localTb)  tables = JSON.parse(localTb);
-          if (localMi)  menuItems = JSON.parse(localMi);
-          if (localMc)  menuCategories = JSON.parse(localMc);
-          if (localSl)  salesLedger = JSON.parse(localSl);
-          if (localInv) inventory = JSON.parse(localInv);
-          if (localEmp) employees = JSON.parse(localEmp);
-          if (localPc)  pettyCash = JSON.parse(localPc);
-          if (localEl)  expenseLedger = JSON.parse(localEl);
-          if (localCo)  cancelledOrders = JSON.parse(localCo);
-          if (localDc)  dailyCloseouts = JSON.parse(localDc);
-          if (localUsr) appUsers = JSON.parse(localUsr);
-        } catch (e) {}
+    // 2. Central Backend REST API (Web Browser Mode across Profile A & B)
+    if (!loadedFromCentral) {
+      await migrateBrowserLocalStorageToApi();
+      const res = await apiCall('data');
+      if (res && res.success && res.data) {
+        const d = res.data;
+        if (Array.isArray(d.inventory)) inventory      = d.inventory;
+        if (Array.isArray(d.employees)) employees      = d.employees;
+        if (Array.isArray(d.pettyCash)) pettyCash      = d.pettyCash.map(p => ({ ...p, amount: Number(p.amount||0), closed: !!p.closed, closeoutId: p.closeoutId || '' }));
+        if (Array.isArray(d.salesLedger)) salesLedger  = d.salesLedger.map(s => ({ ...s, total: Number(s.total||0), closed: !!s.closed, closeoutId: s.closeoutId || '' }));
+        if (Array.isArray(d.expenseLedger)) expenseLedger = d.expenseLedger.map(e => ({ ...e, amount: Number(e.amount||0) }));
+        if (Array.isArray(d.menuItems) && d.menuItems.length > 0) menuItems = d.menuItems;
+        if (Array.isArray(d.menuCategories) && d.menuCategories.length > 0) menuCategories = d.menuCategories;
+        if (Array.isArray(d.deals)) deals          = d.deals;
+        if (Array.isArray(d.tables) && d.tables.length > 0) tables = d.tables;
+        if (Array.isArray(d.orders)) orders         = d.orders;
+        if (Array.isArray(d.cancelledOrders)) cancelledOrders = d.cancelledOrders.map(c => ({ ...c, cost: Number(c.cost||0), closed: !!c.closed, closeoutId: c.closeoutId || '' }));
+        if (Array.isArray(d.dailyCloseouts)) dailyCloseouts = d.dailyCloseouts;
+        if (Array.isArray(d.appUsers) && d.appUsers.length > 0) appUsers = d.appUsers;
+        if (d.unpaidBills && typeof d.unpaidBills === 'object') unpaidBills = d.unpaidBills;
+        if (d.settings && d.settings.nextPettyId != null) nextPettyId = d.settings.nextPettyId;
+        if (d.settings && d.settings.supabaseConfig) {
+          if (d.settings.supabaseConfig.url) window.SUPABASE_URL = d.settings.supabaseConfig.url;
+          if (d.settings.supabaseConfig.key) window.SUPABASE_KEY = d.settings.supabaseConfig.key;
+        }
+
+        console.log('✅ Loaded data from Central Backend Database ✓');
+        loadedFromCentral = true;
+      }
+    }
+
+    // 2.5 Web Browser LocalStorage Fallback (for Vercel & static web hosting)
+    if (!loadedFromCentral) {
+      try {
+        const localOrd = localStorage.getItem('dogar_web_orders');
+        const localTb  = localStorage.getItem('dogar_web_tables');
+        const localUb  = localStorage.getItem('dogar_web_unpaid_bills');
+        const localMi  = localStorage.getItem('dogar_web_menu_items');
+        const localMc  = localStorage.getItem('dogar_web_menu_cats');
+        const localDl  = localStorage.getItem('dogar_web_deals');
+        const localInv = localStorage.getItem('dogar_web_inventory');
+        const localEmp = localStorage.getItem('dogar_web_employees');
+        const localPc  = localStorage.getItem('dogar_web_petty_cash');
+        const localSl  = localStorage.getItem('dogar_web_sales_ledger');
+        const localEl  = localStorage.getItem('dogar_web_expense_ledger');
+        const localCo  = localStorage.getItem('dogar_web_cancelled_orders');
+        const localDc  = localStorage.getItem('dogar_web_daily_closeouts');
+        const localUsr = localStorage.getItem('dogar_web_app_users');
+        const localPid = localStorage.getItem('dogar_web_next_petty_id');
+
+        if (localOrd) orders         = JSON.parse(localOrd);
+        if (localTb)  tables         = JSON.parse(localTb);
+        if (localUb)  unpaidBills    = JSON.parse(localUb);
+        if (localMi)  menuItems      = JSON.parse(localMi);
+        if (localMc)  menuCategories = JSON.parse(localMc);
+        if (localDl)  deals          = JSON.parse(localDl);
+        if (localInv) inventory      = JSON.parse(localInv);
+        if (localEmp) employees      = JSON.parse(localEmp);
+        if (localPc)  pettyCash      = (JSON.parse(localPc)||[]).map(p => ({ ...p, amount: Number(p.amount||0), closed: !!p.closed, closeoutId: p.closeoutId || '' }));
+        if (localSl)  salesLedger    = (JSON.parse(localSl)||[]).map(s => ({ ...s, total: Number(s.total||0), closed: !!s.closed, closeoutId: s.closeoutId || '' }));
+        if (localEl)  expenseLedger  = (JSON.parse(localEl)||[]).map(e => ({ ...e, amount: Number(e.amount||0) }));
+        if (localCo)  cancelledOrders = (JSON.parse(localCo)||[]).map(c => ({ ...c, cost: Number(c.cost||0), closed: !!c.closed, closeoutId: c.closeoutId || '' }));
+        if (localDc)  dailyCloseouts = JSON.parse(localDc);
+        if (localUsr) appUsers       = JSON.parse(localUsr);
+        if (localPid) nextPettyId    = parseInt(localPid) || 1;
+
+        if (localOrd || localTb || localMi) {
+          console.log('✅ Loaded web data from browser localStorage ✓');
+        }
+      } catch (err) {
+        console.warn('LocalStorage web fallback load error:', err);
+      }
+    }
+
+    // 3. Supabase Cloud Sync (Cloud DB)
+    // Local SQLite / Central REST server takes absolute precedence.
+    if (!supabaseClient) initSupabaseFromStorage();
+    if (supabaseClient) {
+      try {
+        const [
+          { data: cloudOrders },
+          { data: cloudTables },
+          { data: cloudBills },
+          { data: cloudMenu },
+          { data: cloudCats },
+          { data: cloudDeals },
+          { data: cloudInv },
+          { data: cloudEmp },
+          { data: cloudPc },
+          { data: cloudSales },
+          { data: cloudExp },
+          { data: cloudCancelled },
+          { data: cloudDailyCloseouts },
+          { data: cloudUsers },
+          { data: cloudSettings }
+        ] = await Promise.all([
+          supabaseClient.from('orders').select('*').neq('status', 'completed').order('created_at', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('tables').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('unpaid_bills').select('*').catch(() => ({ data: null })),
+          supabaseClient.from('menu_items').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('menu_categories').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('deals').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('inventory').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('employees').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('petty_cash').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('sales_ledger').select('*').order('created_at', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('expense_ledger').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('cancelled_orders').select('*').order('created_at', { ascending: false }).catch(() => ({ data: null })),
+          supabaseClient.from('daily_closeouts').select('*').order('timestamp', { ascending: false }).catch(() => ({ data: null })),
+          supabaseClient.from('app_users').select('*').catch(() => ({ data: null })),
+          supabaseClient.from('settings').select('*').catch(() => ({ data: null }))
+        ]);
+
+        if (loadedFromCentral) {
+          // In Desktop App Mode: SQLite is Master. Only populate from cloud if local was empty.
+          if (Array.isArray(cloudOrders) && cloudOrders.length > 0 && orders.length === 0) {
+            orders = cloudOrders.map(r => ({
+              id: r.id, table: r.table_id, items: r.items || [], status: r.status,
+              note: r.note, time: r.time, waiter: r.waiter, isAddOn: !!r.is_add_on, total: Number(r.total || 0),
+              orderType: r.order_type || 'Dine-in', customerPhone: r.customer_phone || '',
+              customerAddress: r.customer_address || '',
+            }));
+          }
+          if (Array.isArray(cloudSales) && cloudSales.length > 0 && salesLedger.length === 0) {
+            salesLedger = cloudSales.map(r => ({
+              id: r.id, date: r.date, table: r.table_id, items: r.items || [], total: Number(r.total || 0), payment: r.payment, waiter: r.waiter,
+              discount: Number(r.discount || 0), perHead: Number(r.per_head || 0), orderType: r.order_type || 'Dine-in',
+              customerPhone: r.customer_phone || '', customerAddress: r.customer_address || '',
+              closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
+            }));
+          }
+          if (Array.isArray(cloudInv) && cloudInv.length > 0 && inventory.length === 0) {
+            inventory = cloudInv.map(r => ({
+              id: r.id, item: r.item, unit: r.unit || '', stock: r.stock || 0, min: r.min || 0, price: r.price || 0, last: r.last || ''
+            }));
+          }
+          if (Array.isArray(cloudEmp) && cloudEmp.length > 0 && employees.length === 0) {
+            employees = cloudEmp.map(r => ({
+              id: r.id, name: r.name, cnic: r.cnic || '', phone: r.phone || '', designation: r.designation || '', salary: r.salary || 0,
+              status: r.status || 'Present', address: r.address || '', salaryPayments: r.salary_payments || [], advances: r.advances || [], attendanceLog: r.attendance_log || []
+            }));
+          }
+          if (Array.isArray(cloudPc) && cloudPc.length > 0 && pettyCash.length === 0) {
+            pettyCash = cloudPc.map(r => ({
+              id: r.id, name: r.name, category: r.category, amount: Number(r.amount || 0), date: r.date || '', notes: r.notes || '',
+              closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
+            }));
+          }
+          if (Array.isArray(cloudExp) && cloudExp.length > 0 && expenseLedger.length === 0) {
+            expenseLedger = cloudExp.map(r => ({
+              id: r.id, date: r.date, category: r.category, amount: Number(r.amount || 0), description: r.description || '', meta: r.meta || {}
+            }));
+          }
+        } else {
+          // In Web / Vercel browser mode:
+          if (Array.isArray(cloudOrders) && cloudOrders.length > 0) {
+            orders = cloudOrders.map(r => ({
+              id: r.id, table: r.table_id, items: r.items || [], status: r.status,
+              note: r.note, time: r.time, waiter: r.waiter, isAddOn: !!r.is_add_on, total: Number(r.total || 0),
+              orderType: r.order_type || 'Dine-in', customerPhone: r.customer_phone || '',
+              customerAddress: r.customer_address || '',
+            }));
+          }
+          if (Array.isArray(cloudTables) && cloudTables.length > 0) {
+            tables = cloudTables.map(r => ({
+              id: r.id, status: r.status || 'available', persons: r.persons || 0,
+              seats: r.seats || 4, reservedFor: r.reserved_for || '', reservedTime: r.reserved_time || '',
+            }));
+          }
+          if (Array.isArray(cloudBills) && cloudBills.length > 0) {
+            const ubObj = {};
+            cloudBills.forEach(r => {
+              ubObj[r.bill_key] = {
+                orderId: r.order_id, items: r.items || [], time: r.time || '', addOnTickets: r.add_on_tickets || 0
+              };
+            });
+            unpaidBills = ubObj;
+          }
+          if (Array.isArray(cloudMenu) && cloudMenu.length > 0) {
+            menuItems = cloudMenu.map(r => ({
+              id: r.id, name: r.name, cat: r.cat, price: r.price, discount: r.discount || 0,
+              desc: r.desc_text || '', img: r.img || '🍕', available: r.available, variants: r.variants || []
+            }));
+          }
+          if (Array.isArray(cloudCats) && cloudCats.length > 0) {
+            menuCategories = cloudCats.map(r => r.name);
+          }
+          if (Array.isArray(cloudDeals) && cloudDeals.length > 0) {
+            deals = cloudDeals.map(r => ({
+              id: r.id, name: r.name, category: r.category, items: r.items || [],
+              price: r.price, available: r.available
+            }));
+          }
+          if (Array.isArray(cloudInv) && cloudInv.length > 0) {
+            inventory = cloudInv.map(r => ({
+              id: r.id, item: r.item, unit: r.unit || '', stock: r.stock || 0, min: r.min || 0, price: r.price || 0, last: r.last || ''
+            }));
+          }
+          if (Array.isArray(cloudEmp) && cloudEmp.length > 0) {
+            employees = cloudEmp.map(r => ({
+              id: r.id, name: r.name, cnic: r.cnic || '', phone: r.phone || '', designation: r.designation || '', salary: r.salary || 0,
+              status: r.status || 'Present', address: r.address || '', salaryPayments: r.salary_payments || [], advances: r.advances || [], attendanceLog: r.attendance_log || []
+            }));
+          }
+          if (Array.isArray(cloudPc) && cloudPc.length > 0) {
+            pettyCash = cloudPc.map(r => ({
+              id: r.id, name: r.name, category: r.category, amount: Number(r.amount || 0), date: r.date || '', notes: r.notes || '',
+              closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
+            }));
+          }
+          if (Array.isArray(cloudSales) && cloudSales.length > 0) {
+            salesLedger = cloudSales.map(r => ({
+              id: r.id, date: r.date, table: r.table_id, items: r.items || [], total: Number(r.total || 0), payment: r.payment, waiter: r.waiter,
+              discount: Number(r.discount || 0), perHead: Number(r.per_head || 0), orderType: r.order_type || 'Dine-in',
+              customerPhone: r.customer_phone || '', customerAddress: r.customer_address || '',
+              closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
+            }));
+          }
+          if (Array.isArray(cloudExp) && cloudExp.length > 0) {
+            expenseLedger = cloudExp.map(r => ({
+              id: r.id, date: r.date, category: r.category, amount: Number(r.amount || 0), description: r.description || '', meta: r.meta || {}
+            }));
+          }
+          if (Array.isArray(cloudCancelled) && cloudCancelled.length > 0) {
+            cancelledOrders = cloudCancelled.map(r => ({
+              id: r.id, date: r.date, time: r.time, orderId: r.order_id, table: r.table_id,
+              orderType: r.order_type || 'Dine-in', items: r.items || [], cost: Number(r.cost || 0),
+              waiter: r.waiter || '', cancelType: r.cancel_type || 'Partial',
+              closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
+            }));
+          }
+          if (Array.isArray(cloudDailyCloseouts) && cloudDailyCloseouts.length > 0) {
+            dailyCloseouts = cloudDailyCloseouts.map(r => ({
+              id: r.id, date: r.date, time: r.time, totalSales: Number(r.total_sales || 0),
+              salesCount: Number(r.sales_count || 0), totalExpenses: Number(r.total_expenses || 0), totalProfit: Number(r.total_profit || 0),
+              totalCancelledCost: Number(r.total_cancelled_cost || 0), cancelledCount: Number(r.cancelled_count || 0),
+              closedBy: r.closed_by || 'Admin', timestamp: r.timestamp || 0
+            }));
+          }
+          if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
+            appUsers = cloudUsers.map(r => ({
+              username: r.username, password: r.password, role: r.role || 'Admin', name: r.name || ''
+            }));
+          }
+          if (Array.isArray(cloudSettings) && cloudSettings.length > 0) {
+            const pSetting = cloudSettings.find(s => s.key === 'nextPettyId');
+            if (pSetting && pSetting.value && pSetting.value.nextPettyId) {
+              nextPettyId = pSetting.value.nextPettyId;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Supabase load warning:', err);
       }
     }
 
     // Default tables fallback if empty
     if (!tables || tables.length === 0) {
       tables = Array.from({ length: 12 }, (_, i) => ({
-        id: i + 1, status: 'available', persons: 0, seats: 4, reservedFor: '', reservedTime: ''
+        id: i + 1,
+        status: 'available',
+        persons: 0,
+        seats: 4,
+        reservedFor: '',
+        reservedTime: ''
       }));
     }
 
@@ -6791,36 +6863,20 @@ async function pushAllDataToCloud() {
 
     // Petty Cash
     if (pettyCash && pettyCash.length > 0) {
-      const pcWithClose = pettyCash.map(p => ({
+      await supabaseClient.from('petty_cash').upsert(pettyCash.map(p => ({
         id: p.id, name: p.name || '', category: p.category || 'Misc', amount: Number(p.amount || 0), date: p.date || '', notes: p.notes || '',
         closed: p.closed ? 1 : 0, closeout_id: p.closeoutId || ''
-      }));
-      const pcRes = await supabaseClient.from('petty_cash').upsert(pcWithClose);
-      if (pcRes && pcRes.error) {
-        const pcWithoutClose = pettyCash.map(p => ({
-          id: p.id, name: p.name || '', category: p.category || 'Misc', amount: Number(p.amount || 0), date: p.date || '', notes: p.notes || ''
-        }));
-        await supabaseClient.from('petty_cash').upsert(pcWithoutClose).catch(e => console.warn('Push PC fallback error:', e));
-      }
+      })));
     }
 
     // Sales Ledger
     if (salesLedger && salesLedger.length > 0) {
-      const slWithClose = salesLedger.map(s => ({
+      await supabaseClient.from('sales_ledger').upsert(salesLedger.map(s => ({
         id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: Number(s.total || 0),
         payment: s.payment || '', waiter: s.waiter || '', discount: Number(s.discount || 0), per_head: Number(s.perHead || 0),
         order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || '',
         closed: s.closed ? 1 : 0, closeout_id: s.closeoutId || ''
-      }));
-      const slRes = await supabaseClient.from('sales_ledger').upsert(slWithClose);
-      if (slRes && slRes.error) {
-        const slWithoutClose = salesLedger.map(s => ({
-          id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: Number(s.total || 0),
-          payment: s.payment || '', waiter: s.waiter || '', discount: Number(s.discount || 0), per_head: Number(s.perHead || 0),
-          order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || ''
-        }));
-        await supabaseClient.from('sales_ledger').upsert(slWithoutClose).catch(e => console.warn('Push SL fallback error:', e));
-      }
+      })));
     }
 
     // Expense Ledger
@@ -6832,21 +6888,12 @@ async function pushAllDataToCloud() {
 
     // Cancelled Orders
     if (cancelledOrders && cancelledOrders.length > 0) {
-      const canWithClose = cancelledOrders.map(c => ({
+      await supabaseClient.from('cancelled_orders').upsert(cancelledOrders.map(c => ({
         id: String(c.id), date: c.date || '', time: c.time || '', order_id: String(c.orderId || ''),
         table_id: String(c.table || ''), order_type: c.orderType || 'Dine-in', items: c.items || [],
         cost: Number(c.cost || 0), waiter: c.waiter || '', cancel_type: c.cancelType || 'Partial',
         closed: c.closed ? 1 : 0, closeout_id: c.closeoutId || ''
-      }));
-      const canRes = await supabaseClient.from('cancelled_orders').upsert(canWithClose);
-      if (canRes && canRes.error) {
-        const canWithoutClose = cancelledOrders.map(c => ({
-          id: String(c.id), date: c.date || '', time: c.time || '', order_id: String(c.orderId || ''),
-          table_id: String(c.table || ''), order_type: c.orderType || 'Dine-in', items: c.items || [],
-          cost: Number(c.cost || 0), waiter: c.waiter || '', cancel_type: c.cancelType || 'Partial'
-        }));
-        await supabaseClient.from('cancelled_orders').upsert(canWithoutClose).catch(e => console.warn('Push cancel fallback error:', e));
-      }
+      })));
     }
 
     // Daily Closeouts
@@ -6871,18 +6918,15 @@ async function pushAllDataToCloud() {
   }
 }
 
-// ── Auto Background Sync every 10 seconds (fail-safe for multi-device sync) ──
+// ── Auto Background Sync every 45 seconds ──
 setInterval(() => {
   if (supabaseClient) {
     loadFromLocal().then(() => {
-      if (typeof renderDashboard === 'function' && activeSection === 'dashboard') renderDashboard();
-      if (typeof renderOrders === 'function' && activeSection === 'orders') renderOrders();
-      if (typeof renderTables === 'function' && activeSection === 'tables') renderTables();
-      if (typeof renderKitchen === 'function' && activeSection === 'kitchen') renderKitchen();
-      if (typeof updateStats === 'function') updateStats();
+      if (typeof renderOrders === 'function') renderOrders();
+      if (typeof renderTables === 'function') renderTables();
     }).catch(err => console.warn('Periodic sync background error:', err));
   }
-}, 10000);
+}, 45000);
 
 // ── ONE-TIME MIGRATION: old localStorage data → SQLite ──
 // Runs once per install; marks itself done afterwards so it never re-runs
