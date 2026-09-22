@@ -2077,55 +2077,48 @@ async function submitOrder(){
   const custPhone=orderType==='Delivery'?deliveryPhone.trim():'';
   const custAddress=orderType==='Delivery'?deliveryAddress.trim():'';
 
-  if(API_CONNECTED){
-    if(orderType==='Dine-in')await apiPut('/api/tables/'+selectedTable, {status:'occupied'});
+  const orderIdStr = 'ORD' + Date.now();
+  const newKitchenTicket = {
+    id: orderIdStr,
+    table: orderType === 'Dine-in' ? selectedTable : null,
+    items: cart.map(c => ({ name: c.name, qty: c.qty, price: c.price, desc: c.desc || '' })),
+    status: 'pending',
+    note,
+    time: timeStr,
+    waiter: currentUser || 'Admin',
+    isAddOn,
+    orderType,
+    customerPhone: custPhone,
+    customerAddress: custAddress
+  };
 
-    const result = await apiPost('/api/orders', {
-      tableId: orderType==='Dine-in'?selectedTable:null,
-      status: 'pending',
-      note,
-      total: sub,
-      orderType, customerPhone: custPhone, customerAddress: custAddress,
-      items: cart.map(c=>({menuItemId: c.id||0, name: c.name, qty: c.qty, price: c.price, desc: c.desc||''}))
-    });
-
-    if(result && result.ok){
-      const newKitchenTicket={id:String(result.orderId),table:orderType==='Dine-in'?selectedTable:null,items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price,desc:c.desc||''})),status:'pending',note,time:timeStr,waiter:currentUser,isAddOn,orderType,customerPhone:custPhone,customerAddress:custAddress};
-      orders.unshift(newKitchenTicket);
-      const billKey=orderType==='Dine-in'?selectedTable:newKitchenTicket.id;
-      if(isAddOn){
-        unpaidBills[billKey].items.push(...cart.map(c=>({name:c.name,qty:c.qty,price:c.price,desc:c.desc||''})));
-        unpaidBills[billKey].addOnTickets=(unpaidBills[billKey].addOnTickets||0)+1;
-        toast('New items sent to kitchen ✓');
-      } else {
-        unpaidBills[billKey]={orderId:String(result.orderId),items:[...cart.map(c=>({name:c.name,qty:c.qty,price:c.price,desc:c.desc||''}))],time:timeStr};
-        toast('Order submitted! ✓');
-      }
-      if(orderType==='Dine-in'){const tbl=tables.find(t=>t.id===selectedTable);if(tbl)tbl.status='occupied';}
-      printKitchenTicket(newKitchenTicket.id);
-      cart=[];selectedTable=null;orderType='Dine-in';deliveryPhone='';deliveryAddress='';
-      ordersView = (currentRole === 'Order Taker') ? 'new' : 'board';
-      showSection('orders');
-      return;
-    }
-  }
-
-  // Fallback local
-  const newKitchenTicket={id:'ORD'+Date.now(),table:orderType==='Dine-in'?selectedTable:null,items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price,desc:c.desc||''})),status:'pending',note,time:timeStr,waiter:currentUser,isAddOn,orderType,customerPhone:custPhone,customerAddress:custAddress};
   orders.unshift(newKitchenTicket);
-  const billKey=orderType==='Dine-in'?selectedTable:newKitchenTicket.id;
-  if(isAddOn){
-    unpaidBills[billKey].items.push(...cart.map(c=>({name:c.name,qty:c.qty,price:c.price,desc:c.desc||''})));
-    unpaidBills[billKey].addOnTickets=(unpaidBills[billKey].addOnTickets||0)+1;
-    toast('New items sent to kitchen (local) ✓');
+  const billKey = orderType === 'Dine-in' ? selectedTable : newKitchenTicket.id;
+  if (isAddOn && unpaidBills[billKey]) {
+    unpaidBills[billKey].items.push(...cart.map(c => ({ name: c.name, qty: c.qty, price: c.price, desc: c.desc || '' })));
+    unpaidBills[billKey].addOnTickets = (unpaidBills[billKey].addOnTickets || 0) + 1;
+    toast('New items sent to kitchen ✓');
   } else {
-    unpaidBills[billKey]={orderId:newKitchenTicket.id,items:[...cart.map(c=>({name:c.name,qty:c.qty,price:c.price,desc:c.desc||''}))],time:timeStr};
-    toast('Order submitted (local)! ✓');
+    unpaidBills[billKey] = {
+      orderId: newKitchenTicket.id,
+      items: [...cart.map(c => ({ name: c.name, qty: c.qty, price: c.price, desc: c.desc || '' }))],
+      time: timeStr
+    };
+    toast('Order submitted! ✓');
   }
-  if(orderType==='Dine-in')tables.find(t=>t.id===selectedTable).status='occupied';
-  saveToLocal();
+
+  if (orderType === 'Dine-in') {
+    const tbl = tables.find(t => t.id === selectedTable);
+    if (tbl) tbl.status = 'occupied';
+  }
+
+  await saveToLocal();
   printKitchenTicket(newKitchenTicket.id);
-  cart=[];selectedTable=null;orderType='Dine-in';deliveryPhone='';deliveryAddress='';
+  cart = [];
+  selectedTable = null;
+  orderType = 'Dine-in';
+  deliveryPhone = '';
+  deliveryAddress = '';
   ordersView = (currentRole === 'Order Taker') ? 'new' : 'board';
   showSection('orders');
 }
@@ -6896,42 +6889,8 @@ const LEGACY_LOCALSTORAGE_KEYS = [
 ];
 
 async function migrateLocalStorageIfNeeded(){
-  try {
-    if (!window.api || !window.api.isDbEmpty) return;
-    if (localStorage.getItem('db_migrated_to_sqlite') === 'true') return;
-
-    const hasLegacyData = LEGACY_LOCALSTORAGE_KEYS.some(k => localStorage.getItem(k) !== null);
-    if (!hasLegacyData) { localStorage.setItem('db_migrated_to_sqlite', 'true'); return; }
-
-    // Don't clobber real database data with an old localStorage snapshot —
-    // only migrate into a database that's never been written to.
-    const isDbEmpty = await window.api.isDbEmpty();
-    if (!isDbEmpty) { localStorage.setItem('db_migrated_to_sqlite', 'true'); return; }
-
-    const legacy = {
-      inventory:      JSON.parse(localStorage.getItem('db_inventory')     || '[]'),
-      employees:      JSON.parse(localStorage.getItem('db_employees')     || '[]'),
-      pettyCash:      JSON.parse(localStorage.getItem('db_pettyCash')     || '[]'),
-      salesLedger:    JSON.parse(localStorage.getItem('db_salesLedger')   || '[]'),
-      expenseLedger:  JSON.parse(localStorage.getItem('db_expenseLedger') || '[]'),
-      menuItems:      JSON.parse(localStorage.getItem('db_menuItems')     || '[]'),
-      menuCategories: JSON.parse(localStorage.getItem('db_menuCats')      || '[]'),
-      tables:         JSON.parse(localStorage.getItem('db_tables')        || '[]'),
-      orders:         JSON.parse(localStorage.getItem('db_orders')        || '[]'),
-      unpaidBills:    JSON.parse(localStorage.getItem('db_unpaidBills')   || '{}'),
-      settings: {
-        nextPettyId: parseInt(localStorage.getItem('db_nextPettyId')) || 7,
-      },
-    };
-
-    await window.api.migrateFromLocalStorage(legacy);
-
-    // Migration succeeded — the old copy is now redundant, clear it so the
-    // app no longer depends on (or reads from) localStorage at all.
-    LEGACY_LOCALSTORAGE_KEYS.forEach(k => localStorage.removeItem(k));
-    localStorage.setItem('db_migrated_to_sqlite', 'true');
-    console.log('✅ One-time migration: localStorage data copied into SQLite');
-  } catch(e) { console.warn('localStorage → SQLite migration failed:', e); }
+  // Legacy migration is permanently completed.
+  return;
 }
 
 // Boot initialization: load users & show Sign-In screen
