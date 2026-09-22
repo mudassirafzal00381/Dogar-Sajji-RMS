@@ -6009,10 +6009,27 @@ async function saveToLocal() {
         }))));
       }
 
+      // App Users
+      if (appUsers && appUsers.length > 0) {
+        promises.push(supabaseClient.from('app_users').upsert(appUsers.map(u => ({
+          username: u.username, password: u.password, role: u.role || 'Admin', name: u.name || ''
+        }))).catch(e => console.warn('Supabase app_users save warning:', e)));
+      }
+
+      // Daily Closeouts
+      if (dailyCloseouts && dailyCloseouts.length > 0) {
+        promises.push(supabaseClient.from('daily_closeouts').upsert(dailyCloseouts.map(c => ({
+          id: String(c.id), date: c.date || '', time: c.time || '', total_sales: c.totalSales || 0,
+          sales_count: c.salesCount || 0, total_expenses: c.totalExpenses || 0, total_profit: c.totalProfit || 0,
+          total_cancelled_cost: c.totalCancelledCost || 0, cancelled_count: c.cancelledCount || 0,
+          closed_by: c.closedBy || '', timestamp: c.timestamp || Date.now()
+        }))).catch(e => console.warn('Supabase daily_closeouts save warning:', e)));
+      }
+
       // Settings
       promises.push(supabaseClient.from('settings').upsert([
         { key: 'nextPettyId', value: { nextPettyId } }
-      ]));
+      ]).catch(e => console.warn('Supabase settings save warning:', e)));
 
       await Promise.all(promises);
       console.log('☁️ Synced all tables to Supabase Cloud DB ✓');
@@ -6385,21 +6402,25 @@ async function loadFromLocal() {
         { data: cloudSales },
         { data: cloudExp },
         { data: cloudCancelled },
+        { data: cloudDailyCloseouts },
+        { data: cloudUsers },
         { data: cloudSettings }
       ] = await Promise.all([
-        supabaseClient.from('orders').select('*').neq('status', 'completed').order('created_at', { ascending: true }),
-        supabaseClient.from('tables').select('*').order('id', { ascending: true }),
-        supabaseClient.from('unpaid_bills').select('*'),
-        supabaseClient.from('menu_items').select('*').order('id', { ascending: true }),
-        supabaseClient.from('menu_categories').select('*').order('id', { ascending: true }),
-        supabaseClient.from('deals').select('*').order('id', { ascending: true }),
-        supabaseClient.from('inventory').select('*').order('id', { ascending: true }),
-        supabaseClient.from('employees').select('*').order('id', { ascending: true }),
-        supabaseClient.from('petty_cash').select('*').order('id', { ascending: true }),
-        supabaseClient.from('sales_ledger').select('*').order('created_at', { ascending: true }),
-        supabaseClient.from('expense_ledger').select('*').order('id', { ascending: true }),
-        supabaseClient.from('cancelled_orders').select('*').order('created_at', { ascending: false }),
-        supabaseClient.from('settings').select('*')
+        supabaseClient.from('orders').select('*').neq('status', 'completed').order('created_at', { ascending: true }).catch(() => ({ data: null })),
+        supabaseClient.from('tables').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+        supabaseClient.from('unpaid_bills').select('*').catch(() => ({ data: null })),
+        supabaseClient.from('menu_items').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+        supabaseClient.from('menu_categories').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+        supabaseClient.from('deals').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+        supabaseClient.from('inventory').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+        supabaseClient.from('employees').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+        supabaseClient.from('petty_cash').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+        supabaseClient.from('sales_ledger').select('*').order('created_at', { ascending: true }).catch(() => ({ data: null })),
+        supabaseClient.from('expense_ledger').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+        supabaseClient.from('cancelled_orders').select('*').order('created_at', { ascending: false }).catch(() => ({ data: null })),
+        supabaseClient.from('daily_closeouts').select('*').order('timestamp', { ascending: false }).catch(() => ({ data: null })),
+        supabaseClient.from('app_users').select('*').catch(() => ({ data: null })),
+        supabaseClient.from('settings').select('*').catch(() => ({ data: null }))
       ]);
 
       if (Array.isArray(cloudOrders)) {
@@ -6484,6 +6505,21 @@ async function loadFromLocal() {
           id: r.id, date: r.date, time: r.time, orderId: r.order_id, table: r.table_id,
           orderType: r.order_type || 'Dine-in', items: r.items || [], cost: r.cost || 0,
           waiter: r.waiter || '', cancelType: r.cancel_type || 'Partial'
+        }));
+      }
+
+      if (Array.isArray(cloudDailyCloseouts) && cloudDailyCloseouts.length > 0) {
+        dailyCloseouts = cloudDailyCloseouts.map(r => ({
+          id: r.id, date: r.date, time: r.time, totalSales: r.total_sales || 0,
+          salesCount: r.sales_count || 0, totalExpenses: r.total_expenses || 0, totalProfit: r.total_profit || 0,
+          totalCancelledCost: r.total_cancelled_cost || 0, cancelledCount: r.cancelled_count || 0,
+          closedBy: r.closed_by || 'Admin', timestamp: r.timestamp || 0
+        }));
+      }
+
+      if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
+        appUsers = cloudUsers.map(r => ({
+          username: r.username, password: r.password, role: r.role || 'Admin', name: r.name || ''
         }));
       }
 

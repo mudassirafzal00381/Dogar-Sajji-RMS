@@ -165,8 +165,24 @@ CREATE TABLE IF NOT EXISTS public.cancelled_orders (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 15. DAILY CLOSEOUTS
+CREATE TABLE IF NOT EXISTS public.daily_closeouts (
+  id TEXT PRIMARY KEY,
+  date TEXT,
+  time TEXT,
+  total_sales NUMERIC DEFAULT 0,
+  sales_count INT DEFAULT 0,
+  total_expenses NUMERIC DEFAULT 0,
+  total_profit NUMERIC DEFAULT 0,
+  total_cancelled_cost NUMERIC DEFAULT 0,
+  cancelled_count INT DEFAULT 0,
+  closed_by TEXT DEFAULT '',
+  timestamp BIGINT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ══════════════════════════════════════════════════════════════════════════════
--- SEED INITIAL DATA FOR DOGAR SAJJI
+-- SEED INITIAL DATA FOR DOGAR SAJJI & RESTAURANT
 -- ══════════════════════════════════════════════════════════════════════════════
 
 -- Seed Tables (1 to 12)
@@ -235,6 +251,8 @@ ALTER TABLE public.sales_ledger ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expense_ledger ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.app_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cancelled_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.daily_closeouts ENABLE ROW LEVEL SECURITY;
 
 -- Allow full access to anon/public users
 DO $$ 
@@ -251,4 +269,5 @@ END $$;
 ALTER PUBLICATION supabase_realtime ADD TABLE 
   public.orders, public.tables, public.unpaid_bills, public.menu_items, 
   public.menu_categories, public.deals, public.inventory, public.employees, 
-  public.petty_cash, public.sales_ledger, public.expense_ledger, public.settings, public.app_users;
+  public.petty_cash, public.sales_ledger, public.expense_ledger, public.settings, 
+  public.app_users, public.cancelled_orders, public.daily_closeouts;
