@@ -81,7 +81,7 @@ function registerIpcHandlers(db) {
       try {
         const today = new Date().toISOString().split('T')[0];
         const { canceled, filePath } = await dialog.showSaveDialog({
-          title: "Backup Dogar Sajji Database",
+          title: "Backup Dogar Sajji & Restaurant Database",
           defaultPath: `dogar-sajji-backup-${today}.db`,
           filters: [
             { name: 'SQLite Database', extensions: ['db', 'sqlite'] },

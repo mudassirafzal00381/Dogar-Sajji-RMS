@@ -1,8 +1,8 @@
 {
   "name": "dogar-sajji-rms",
-  "productName": "Dogar Sajji",
+  "productName": "Dogar Sajji & Restaurant",
   "version": "1.0.0",
-  "description": "Dogar Sajji Restaurant Management System",
+  "description": "Dogar Sajji & Restaurant Management System",
   "main": "main.js",
   "private": true,
   "scripts": {
@@ -19,7 +19,7 @@
   },
   "build": {
     "appId": "com.dogarsajji.rms",
-    "productName": "Dogar Sajji",
+    "productName": "Dogar Sajji & Restaurant",
     "npmRebuild": false,
     "directories": {
       "output": "dist",

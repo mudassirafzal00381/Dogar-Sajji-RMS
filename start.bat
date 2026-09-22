@@ -1,9 +1,9 @@
 @echo off
-title Dogar Sajji RMS
+title Dogar Sajji & Restaurant RMS
 cd /d "%~dp0"
 
 echo ========================================================
-echo   Launching Dogar Sajji RMS...
+echo   Launching Dogar Sajji & Restaurant RMS...
 echo ========================================================
 
 if not exist "node_modules\electron" (

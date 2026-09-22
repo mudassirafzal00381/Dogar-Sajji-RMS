@@ -113,7 +113,7 @@ async function handleApiRequest(req, res, urlPath) {
     // ── Health Check ──
     if (urlPath === '/api/status' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok', app: "Dogar Sajji", empty: database.isDbEmpty() }));
+      res.end(JSON.stringify({ status: 'ok', app: "Dogar Sajji & Restaurant", empty: database.isDbEmpty() }));
       return;
     }
 
