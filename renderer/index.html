@@ -5961,22 +5961,22 @@ async function saveToLocal() {
       if (menuItems && menuItems.length > 0) {
         promises.push(supabaseClient.from('menu_items').upsert(menuItems.map(m => ({
           id: m.id, name: m.name, cat: m.cat, price: m.price || 0, discount: m.discount || 0,
-          desc_text: m.desc || '', img: m.img || '🍕', available: m.available !== false, variants: m.variants || []
-        }))));
+          desc: m.desc || '', img: m.img || '🍕', available: m.available !== false, variants: m.variants || []
+        }))).catch(e => console.warn('Supabase menu_items save warning:', e)));
       }
 
       // Deals
       if (deals && deals.length > 0) {
         promises.push(supabaseClient.from('deals').upsert(deals.map(d => ({
           id: d.id, name: d.name, category: d.category, items: d.items || [], price: d.price || 0, available: d.available !== false
-        }))));
+        }))).catch(e => console.warn('Supabase deals save warning:', e)));
       }
 
       // Inventory
       if (inventory && inventory.length > 0) {
         promises.push(supabaseClient.from('inventory').upsert(inventory.map(i => ({
           id: i.id, item: i.item || i.name || '', unit: i.unit || '', stock: i.stock || 0, min: i.min || 0, price: i.price || 0, last: i.last || ''
-        }))));
+        }))).catch(e => console.warn('Supabase inventory save warning:', e)));
       }
 
       // Employees
@@ -5984,14 +5984,14 @@ async function saveToLocal() {
         promises.push(supabaseClient.from('employees').upsert(employees.map(e => ({
           id: e.id, name: e.name, cnic: e.cnic || '', phone: e.phone || '', designation: e.designation || '', salary: e.salary || 0,
           status: e.status || 'Present', address: e.address || '', salary_payments: e.salaryPayments || [], advances: e.advances || [], attendance_log: e.attendanceLog || []
-        }))));
+        }))).catch(e => console.warn('Supabase employees save warning:', e)));
       }
 
       // Petty Cash
       if (pettyCash && pettyCash.length > 0) {
         promises.push(supabaseClient.from('petty_cash').upsert(pettyCash.map(p => ({
           id: p.id, name: p.name || '', category: p.category || 'Misc', amount: p.amount || 0, date: p.date || '', notes: p.notes || ''
-        }))));
+        }))).catch(e => console.warn('Supabase petty_cash save warning:', e)));
       }
 
       // Sales Ledger
@@ -6000,14 +6000,14 @@ async function saveToLocal() {
           id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: s.total || 0,
           payment: s.payment || '', waiter: s.waiter || '', discount: s.discount || 0, per_head: s.perHead || 0,
           order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || ''
-        }))));
+        }))).catch(e => console.warn('Supabase sales_ledger save warning:', e)));
       }
 
       // Expense Ledger
       if (expenseLedger && expenseLedger.length > 0) {
         promises.push(supabaseClient.from('expense_ledger').upsert(expenseLedger.map(e => ({
           date: e.date || '', category: e.category || '', amount: e.amount || 0, description: e.description || '', meta: e.meta || {}
-        }))));
+        }))).catch(e => console.warn('Supabase expense_ledger save warning:', e)));
       }
 
       // Cancelled Orders
@@ -6016,13 +6016,20 @@ async function saveToLocal() {
           id: String(c.id), date: c.date || '', time: c.time || '', order_id: String(c.orderId || ''),
           table_id: String(c.table || ''), order_type: c.orderType || 'Dine-in', items: c.items || [],
           cost: c.cost || 0, waiter: c.waiter || '', cancel_type: c.cancelType || 'Partial'
-        }))));
+        }))).catch(e => console.warn('Supabase cancelled_orders save warning:', e)));
+      }
+
+      // App Users
+      if (appUsers && appUsers.length > 0) {
+        promises.push(supabaseClient.from('app_users').upsert(appUsers.map(u => ({
+          username: u.username, password: u.password, role: u.role || 'Admin', name: u.name || ''
+        }))).catch(e => console.warn('Supabase app_users save warning:', e)));
       }
 
       // Settings
       promises.push(supabaseClient.from('settings').upsert([
         { key: 'nextPettyId', value: { nextPettyId } }
-      ]));
+      ]).catch(e => console.warn('Supabase settings save warning:', e)));
 
       await Promise.all(promises);
       console.log('☁️ Synced all tables to Supabase Cloud DB ✓');
@@ -6382,6 +6389,8 @@ async function loadFromLocal() {
     // 3. Supabase Cloud Sync (Cloud DB)
     if (!supabaseClient) initSupabaseFromStorage();
     if (supabaseClient) {
+      const fetchSafe = (promise) => promise.catch(err => { console.warn('Supabase query error:', err); return { data: null }; });
+
       const [
         { data: cloudOrders },
         { data: cloudTables },
@@ -6395,21 +6404,23 @@ async function loadFromLocal() {
         { data: cloudSales },
         { data: cloudExp },
         { data: cloudCancelled },
-        { data: cloudSettings }
+        { data: cloudSettings },
+        { data: cloudUsers }
       ] = await Promise.all([
-        supabaseClient.from('orders').select('*').neq('status', 'completed').order('created_at', { ascending: true }),
-        supabaseClient.from('tables').select('*').order('id', { ascending: true }),
-        supabaseClient.from('unpaid_bills').select('*'),
-        supabaseClient.from('menu_items').select('*').order('id', { ascending: true }),
-        supabaseClient.from('menu_categories').select('*').order('id', { ascending: true }),
-        supabaseClient.from('deals').select('*').order('id', { ascending: true }),
-        supabaseClient.from('inventory').select('*').order('id', { ascending: true }),
-        supabaseClient.from('employees').select('*').order('id', { ascending: true }),
-        supabaseClient.from('petty_cash').select('*').order('id', { ascending: true }),
-        supabaseClient.from('sales_ledger').select('*').order('created_at', { ascending: true }),
-        supabaseClient.from('expense_ledger').select('*').order('id', { ascending: true }),
-        supabaseClient.from('cancelled_orders').select('*').order('created_at', { ascending: false }),
-        supabaseClient.from('settings').select('*')
+        fetchSafe(supabaseClient.from('orders').select('*').neq('status', 'completed')),
+        fetchSafe(supabaseClient.from('tables').select('*').order('id', { ascending: true })),
+        fetchSafe(supabaseClient.from('unpaid_bills').select('*')),
+        fetchSafe(supabaseClient.from('menu_items').select('*').order('id', { ascending: true })),
+        fetchSafe(supabaseClient.from('menu_categories').select('*')),
+        fetchSafe(supabaseClient.from('deals').select('*').order('id', { ascending: true })),
+        fetchSafe(supabaseClient.from('inventory').select('*').order('id', { ascending: true })),
+        fetchSafe(supabaseClient.from('employees').select('*').order('id', { ascending: true })),
+        fetchSafe(supabaseClient.from('petty_cash').select('*').order('id', { ascending: true })),
+        fetchSafe(supabaseClient.from('sales_ledger').select('*')),
+        fetchSafe(supabaseClient.from('expense_ledger').select('*').order('id', { ascending: true })),
+        fetchSafe(supabaseClient.from('cancelled_orders').select('*')),
+        fetchSafe(supabaseClient.from('settings').select('*')),
+        fetchSafe(supabaseClient.from('app_users').select('*'))
       ]);
 
       if (Array.isArray(cloudOrders)) {
@@ -6441,7 +6452,7 @@ async function loadFromLocal() {
       if (Array.isArray(cloudMenu) && cloudMenu.length > 0) {
         menuItems = cloudMenu.map(r => ({
           id: r.id, name: r.name, cat: r.cat, price: r.price, discount: r.discount || 0,
-          desc: r.desc_text || '', img: r.img || '🍕', available: r.available, variants: r.variants || []
+          desc: r.desc || r.desc_text || r.description || '', img: r.img || '🍕', available: r.available, variants: r.variants || []
         }));
       }
 
@@ -6495,6 +6506,14 @@ async function loadFromLocal() {
           orderType: r.order_type || 'Dine-in', items: r.items || [], cost: r.cost || 0,
           waiter: r.waiter || '', cancelType: r.cancel_type || 'Partial'
         }));
+      }
+
+      if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
+        appUsers = cloudUsers.map(r => ({
+          username: r.username, password: r.password, role: r.role || 'Admin', name: r.name || ''
+        }));
+        const adminUser = appUsers.find(u => u.username && u.username.toLowerCase() === 'admin');
+        if (adminUser && adminUser.password) ADMIN_CREDENTIALS.password = adminUser.password;
       }
 
       if (Array.isArray(cloudSettings) && cloudSettings.length > 0) {
