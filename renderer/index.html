@@ -725,22 +725,10 @@ tr:hover td{background:rgba(201,168,76,.04)}
 
 <script>
 
-// ── PURGE LEGACY CACHE & ONE-TIME CLEAN WIPE ──
+// ── PURGE OBSOLETE LEGACY KEYS ONLY ──
 (function(){
   const legacyKeys = ['hfc_supabase_url','hfc_supabase_key','hfc_menu_items','db_menu_items','desi-bites'];
   legacyKeys.forEach(k => localStorage.removeItem(k));
-
-  const wipeVersion = 'dogar_wipe_v4';
-  if (localStorage.getItem(wipeVersion) !== 'true') {
-    const staleKeys = [
-      'dogar_web_orders', 'dogar_web_unpaid_bills', 'dogar_web_inventory',
-      'dogar_web_employees', 'dogar_web_petty_cash', 'dogar_web_sales_ledger',
-      'dogar_web_expense_ledger', 'dogar_web_cancelled_orders', 'dogar_web_daily_closeouts',
-      'dogar_web_deals', 'dogar_web_next_petty_id'
-    ];
-    staleKeys.forEach(k => localStorage.removeItem(k));
-    localStorage.setItem(wipeVersion, 'true');
-  }
 })();
 
 
@@ -6321,10 +6309,9 @@ async function loadFromLocal() {
     let loadedFromCentral = false;
 
     // 1. Electron SQLite (Desktop app mode)
-    if (window.api && window.api.isDbEmpty) {
-      await migrateLocalStorageIfNeeded();
-      const isDbEmpty = await window.api.isDbEmpty();
-      if (!isDbEmpty) {
+    if (window.api && typeof window.api.getMenuItems === 'function') {
+      try {
+        await migrateLocalStorageIfNeeded();
         const [inv, emp, pc, sl, el, mi, mc, dl, tb, ord, ub, settings, usr, co, dc] = await Promise.all([
           window.api.getInventory(),
           window.api.getEmployees(),
@@ -6348,8 +6335,8 @@ async function loadFromLocal() {
         if (Array.isArray(pc))  pettyCash      = pc.map(p => ({ ...p, amount: Number(p.amount||0), closed: !!p.closed, closeoutId: p.closeoutId || '' }));
         if (Array.isArray(sl))  salesLedger    = sl.map(s => ({ ...s, total: Number(s.total||0), closed: !!s.closed, closeoutId: s.closeoutId || '' }));
         if (Array.isArray(el))  expenseLedger  = el.map(e => ({ ...e, amount: Number(e.amount||0) }));
-        if (Array.isArray(mi))  menuItems      = mi;
-        if (Array.isArray(mc))  menuCategories = mc;
+        if (Array.isArray(mi) && mi.length > 0)  menuItems      = mi;
+        if (Array.isArray(mc) && mc.length > 0)  menuCategories = mc;
         if (Array.isArray(dl))  deals          = dl;
         if (Array.isArray(tb) && tb.length > 0)  tables = tb;
         if (Array.isArray(ord)) orders         = ord;
@@ -6369,6 +6356,8 @@ async function loadFromLocal() {
 
         console.log('✅ Loaded data from SQLite database ✓');
         loadedFromCentral = true;
+      } catch (err) {
+        console.warn('SQLite load warning:', err);
       }
     }
 
@@ -6383,8 +6372,8 @@ async function loadFromLocal() {
         if (Array.isArray(d.pettyCash)) pettyCash      = d.pettyCash.map(p => ({ ...p, amount: Number(p.amount||0), closed: !!p.closed, closeoutId: p.closeoutId || '' }));
         if (Array.isArray(d.salesLedger)) salesLedger  = d.salesLedger.map(s => ({ ...s, total: Number(s.total||0), closed: !!s.closed, closeoutId: s.closeoutId || '' }));
         if (Array.isArray(d.expenseLedger)) expenseLedger = d.expenseLedger.map(e => ({ ...e, amount: Number(e.amount||0) }));
-        if (Array.isArray(d.menuItems)) menuItems      = d.menuItems;
-        if (Array.isArray(d.menuCategories)) menuCategories = d.menuCategories;
+        if (Array.isArray(d.menuItems) && d.menuItems.length > 0) menuItems = d.menuItems;
+        if (Array.isArray(d.menuCategories) && d.menuCategories.length > 0) menuCategories = d.menuCategories;
         if (Array.isArray(d.deals)) deals          = d.deals;
         if (Array.isArray(d.tables) && d.tables.length > 0) tables = d.tables;
         if (Array.isArray(d.orders)) orders         = d.orders;
@@ -6447,153 +6436,185 @@ async function loadFromLocal() {
     }
 
     // 3. Supabase Cloud Sync (Cloud DB)
+    // Local SQLite / Central REST server takes absolute precedence.
     if (!supabaseClient) initSupabaseFromStorage();
     if (supabaseClient) {
-      const [
-        { data: cloudOrders },
-        { data: cloudTables },
-        { data: cloudBills },
-        { data: cloudMenu },
-        { data: cloudCats },
-        { data: cloudDeals },
-        { data: cloudInv },
-        { data: cloudEmp },
-        { data: cloudPc },
-        { data: cloudSales },
-        { data: cloudExp },
-        { data: cloudCancelled },
-        { data: cloudDailyCloseouts },
-        { data: cloudUsers },
-        { data: cloudSettings }
-      ] = await Promise.all([
-        supabaseClient.from('orders').select('*').neq('status', 'completed').order('created_at', { ascending: true }).catch(() => ({ data: null })),
-        supabaseClient.from('tables').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-        supabaseClient.from('unpaid_bills').select('*').catch(() => ({ data: null })),
-        supabaseClient.from('menu_items').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-        supabaseClient.from('menu_categories').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-        supabaseClient.from('deals').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-        supabaseClient.from('inventory').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-        supabaseClient.from('employees').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-        supabaseClient.from('petty_cash').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-        supabaseClient.from('sales_ledger').select('*').order('created_at', { ascending: true }).catch(() => ({ data: null })),
-        supabaseClient.from('expense_ledger').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-        supabaseClient.from('cancelled_orders').select('*').order('created_at', { ascending: false }).catch(() => ({ data: null })),
-        supabaseClient.from('daily_closeouts').select('*').order('timestamp', { ascending: false }).catch(() => ({ data: null })),
-        supabaseClient.from('app_users').select('*').catch(() => ({ data: null })),
-        supabaseClient.from('settings').select('*').catch(() => ({ data: null }))
-      ]);
+      try {
+        const [
+          { data: cloudOrders },
+          { data: cloudTables },
+          { data: cloudBills },
+          { data: cloudMenu },
+          { data: cloudCats },
+          { data: cloudDeals },
+          { data: cloudInv },
+          { data: cloudEmp },
+          { data: cloudPc },
+          { data: cloudSales },
+          { data: cloudExp },
+          { data: cloudCancelled },
+          { data: cloudDailyCloseouts },
+          { data: cloudUsers },
+          { data: cloudSettings }
+        ] = await Promise.all([
+          supabaseClient.from('orders').select('*').neq('status', 'completed').order('created_at', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('tables').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('unpaid_bills').select('*').catch(() => ({ data: null })),
+          supabaseClient.from('menu_items').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('menu_categories').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('deals').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('inventory').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('employees').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('petty_cash').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('sales_ledger').select('*').order('created_at', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('expense_ledger').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('cancelled_orders').select('*').order('created_at', { ascending: false }).catch(() => ({ data: null })),
+          supabaseClient.from('daily_closeouts').select('*').order('timestamp', { ascending: false }).catch(() => ({ data: null })),
+          supabaseClient.from('app_users').select('*').catch(() => ({ data: null })),
+          supabaseClient.from('settings').select('*').catch(() => ({ data: null }))
+        ]);
 
-      if (Array.isArray(cloudOrders)) {
-        orders = cloudOrders.map(r => ({
-          id: r.id, table: r.table_id, items: r.items || [], status: r.status,
-          note: r.note, time: r.time, waiter: r.waiter, isAddOn: !!r.is_add_on, total: Number(r.total || 0),
-          orderType: r.order_type || 'Dine-in', customerPhone: r.customer_phone || '',
-          customerAddress: r.customer_address || '',
-        }));
-      }
-
-      if (Array.isArray(cloudTables) && cloudTables.length > 0) {
-        tables = cloudTables.map(r => ({
-          id: r.id, status: r.status || 'available', persons: r.persons || 0,
-          seats: r.seats || 4, reservedFor: r.reserved_for || '', reservedTime: r.reserved_time || '',
-        }));
-      }
-
-      if (Array.isArray(cloudBills)) {
-        const ubObj = {};
-        cloudBills.forEach(r => {
-          ubObj[r.bill_key] = {
-            orderId: r.order_id, items: r.items || [], time: r.time || '', addOnTickets: r.add_on_tickets || 0
-          };
-        });
-        unpaidBills = ubObj;
-      }
-
-      if (Array.isArray(cloudMenu) && cloudMenu.length > 0) {
-        menuItems = cloudMenu.map(r => ({
-          id: r.id, name: r.name, cat: r.cat, price: r.price, discount: r.discount || 0,
-          desc: r.desc_text || '', img: r.img || '🍕', available: r.available, variants: r.variants || []
-        }));
-      }
-
-      if (Array.isArray(cloudCats) && cloudCats.length > 0) {
-        menuCategories = cloudCats.map(r => r.name);
-      }
-
-      if (Array.isArray(cloudDeals)) {
-        deals = cloudDeals.map(r => ({
-          id: r.id, name: r.name, category: r.category, items: r.items || [],
-          price: r.price, available: r.available
-        }));
-      }
-
-      if (Array.isArray(cloudInv)) {
-        inventory = cloudInv.map(r => ({
-          id: r.id, item: r.item, unit: r.unit || '', stock: r.stock || 0, min: r.min || 0, price: r.price || 0, last: r.last || ''
-        }));
-      }
-
-      if (Array.isArray(cloudEmp)) {
-        employees = cloudEmp.map(r => ({
-          id: r.id, name: r.name, cnic: r.cnic || '', phone: r.phone || '', designation: r.designation || '', salary: r.salary || 0,
-          status: r.status || 'Present', address: r.address || '', salaryPayments: r.salary_payments || [], advances: r.advances || [], attendanceLog: r.attendance_log || []
-        }));
-      }
-
-      if (Array.isArray(cloudPc)) {
-        pettyCash = cloudPc.map(r => ({
-          id: r.id, name: r.name, category: r.category, amount: Number(r.amount || 0), date: r.date || '', notes: r.notes || '',
-          closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
-        }));
-      }
-
-      if (Array.isArray(cloudSales)) {
-        salesLedger = cloudSales.map(r => ({
-          id: r.id, date: r.date, table: r.table_id, items: r.items || [], total: Number(r.total || 0), payment: r.payment, waiter: r.waiter,
-          discount: Number(r.discount || 0), perHead: Number(r.per_head || 0), orderType: r.order_type || 'Dine-in',
-          customerPhone: r.customer_phone || '', customerAddress: r.customer_address || '',
-          closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
-        }));
-      }
-
-      if (Array.isArray(cloudExp)) {
-        expenseLedger = cloudExp.map(r => ({
-          id: r.id, date: r.date, category: r.category, amount: Number(r.amount || 0), description: r.description || '', meta: r.meta || {}
-        }));
-      }
-
-      if (Array.isArray(cloudCancelled)) {
-        cancelledOrders = cloudCancelled.map(r => ({
-          id: r.id, date: r.date, time: r.time, orderId: r.order_id, table: r.table_id,
-          orderType: r.order_type || 'Dine-in', items: r.items || [], cost: Number(r.cost || 0),
-          waiter: r.waiter || '', cancelType: r.cancel_type || 'Partial',
-          closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
-        }));
-      }
-
-      if (Array.isArray(cloudDailyCloseouts)) {
-        dailyCloseouts = cloudDailyCloseouts.map(r => ({
-          id: r.id, date: r.date, time: r.time, totalSales: Number(r.total_sales || 0),
-          salesCount: Number(r.sales_count || 0), totalExpenses: Number(r.total_expenses || 0), totalProfit: Number(r.total_profit || 0),
-          totalCancelledCost: Number(r.total_cancelled_cost || 0), cancelledCount: Number(r.cancelled_count || 0),
-          closedBy: r.closed_by || 'Admin', timestamp: r.timestamp || 0
-        }));
-      }
-
-      if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
-        appUsers = cloudUsers.map(r => ({
-          username: r.username, password: r.password, role: r.role || 'Admin', name: r.name || ''
-        }));
-      }
-
-      if (Array.isArray(cloudSettings) && cloudSettings.length > 0) {
-        const pSetting = cloudSettings.find(s => s.key === 'nextPettyId');
-        if (pSetting && pSetting.value && pSetting.value.nextPettyId) {
-          nextPettyId = pSetting.value.nextPettyId;
+        if (loadedFromCentral) {
+          // In Desktop App Mode: SQLite is Master. Only populate from cloud if local was empty.
+          if (Array.isArray(cloudOrders) && cloudOrders.length > 0 && orders.length === 0) {
+            orders = cloudOrders.map(r => ({
+              id: r.id, table: r.table_id, items: r.items || [], status: r.status,
+              note: r.note, time: r.time, waiter: r.waiter, isAddOn: !!r.is_add_on, total: Number(r.total || 0),
+              orderType: r.order_type || 'Dine-in', customerPhone: r.customer_phone || '',
+              customerAddress: r.customer_address || '',
+            }));
+          }
+          if (Array.isArray(cloudSales) && cloudSales.length > 0 && salesLedger.length === 0) {
+            salesLedger = cloudSales.map(r => ({
+              id: r.id, date: r.date, table: r.table_id, items: r.items || [], total: Number(r.total || 0), payment: r.payment, waiter: r.waiter,
+              discount: Number(r.discount || 0), perHead: Number(r.per_head || 0), orderType: r.order_type || 'Dine-in',
+              customerPhone: r.customer_phone || '', customerAddress: r.customer_address || '',
+              closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
+            }));
+          }
+          if (Array.isArray(cloudInv) && cloudInv.length > 0 && inventory.length === 0) {
+            inventory = cloudInv.map(r => ({
+              id: r.id, item: r.item, unit: r.unit || '', stock: r.stock || 0, min: r.min || 0, price: r.price || 0, last: r.last || ''
+            }));
+          }
+          if (Array.isArray(cloudEmp) && cloudEmp.length > 0 && employees.length === 0) {
+            employees = cloudEmp.map(r => ({
+              id: r.id, name: r.name, cnic: r.cnic || '', phone: r.phone || '', designation: r.designation || '', salary: r.salary || 0,
+              status: r.status || 'Present', address: r.address || '', salaryPayments: r.salary_payments || [], advances: r.advances || [], attendanceLog: r.attendance_log || []
+            }));
+          }
+          if (Array.isArray(cloudPc) && cloudPc.length > 0 && pettyCash.length === 0) {
+            pettyCash = cloudPc.map(r => ({
+              id: r.id, name: r.name, category: r.category, amount: Number(r.amount || 0), date: r.date || '', notes: r.notes || '',
+              closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
+            }));
+          }
+          if (Array.isArray(cloudExp) && cloudExp.length > 0 && expenseLedger.length === 0) {
+            expenseLedger = cloudExp.map(r => ({
+              id: r.id, date: r.date, category: r.category, amount: Number(r.amount || 0), description: r.description || '', meta: r.meta || {}
+            }));
+          }
+        } else {
+          // In Web / Vercel browser mode:
+          if (Array.isArray(cloudOrders) && cloudOrders.length > 0) {
+            orders = cloudOrders.map(r => ({
+              id: r.id, table: r.table_id, items: r.items || [], status: r.status,
+              note: r.note, time: r.time, waiter: r.waiter, isAddOn: !!r.is_add_on, total: Number(r.total || 0),
+              orderType: r.order_type || 'Dine-in', customerPhone: r.customer_phone || '',
+              customerAddress: r.customer_address || '',
+            }));
+          }
+          if (Array.isArray(cloudTables) && cloudTables.length > 0) {
+            tables = cloudTables.map(r => ({
+              id: r.id, status: r.status || 'available', persons: r.persons || 0,
+              seats: r.seats || 4, reservedFor: r.reserved_for || '', reservedTime: r.reserved_time || '',
+            }));
+          }
+          if (Array.isArray(cloudBills) && cloudBills.length > 0) {
+            const ubObj = {};
+            cloudBills.forEach(r => {
+              ubObj[r.bill_key] = {
+                orderId: r.order_id, items: r.items || [], time: r.time || '', addOnTickets: r.add_on_tickets || 0
+              };
+            });
+            unpaidBills = ubObj;
+          }
+          if (Array.isArray(cloudMenu) && cloudMenu.length > 0) {
+            menuItems = cloudMenu.map(r => ({
+              id: r.id, name: r.name, cat: r.cat, price: r.price, discount: r.discount || 0,
+              desc: r.desc_text || '', img: r.img || '🍕', available: r.available, variants: r.variants || []
+            }));
+          }
+          if (Array.isArray(cloudCats) && cloudCats.length > 0) {
+            menuCategories = cloudCats.map(r => r.name);
+          }
+          if (Array.isArray(cloudDeals) && cloudDeals.length > 0) {
+            deals = cloudDeals.map(r => ({
+              id: r.id, name: r.name, category: r.category, items: r.items || [],
+              price: r.price, available: r.available
+            }));
+          }
+          if (Array.isArray(cloudInv) && cloudInv.length > 0) {
+            inventory = cloudInv.map(r => ({
+              id: r.id, item: r.item, unit: r.unit || '', stock: r.stock || 0, min: r.min || 0, price: r.price || 0, last: r.last || ''
+            }));
+          }
+          if (Array.isArray(cloudEmp) && cloudEmp.length > 0) {
+            employees = cloudEmp.map(r => ({
+              id: r.id, name: r.name, cnic: r.cnic || '', phone: r.phone || '', designation: r.designation || '', salary: r.salary || 0,
+              status: r.status || 'Present', address: r.address || '', salaryPayments: r.salary_payments || [], advances: r.advances || [], attendanceLog: r.attendance_log || []
+            }));
+          }
+          if (Array.isArray(cloudPc) && cloudPc.length > 0) {
+            pettyCash = cloudPc.map(r => ({
+              id: r.id, name: r.name, category: r.category, amount: Number(r.amount || 0), date: r.date || '', notes: r.notes || '',
+              closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
+            }));
+          }
+          if (Array.isArray(cloudSales) && cloudSales.length > 0) {
+            salesLedger = cloudSales.map(r => ({
+              id: r.id, date: r.date, table: r.table_id, items: r.items || [], total: Number(r.total || 0), payment: r.payment, waiter: r.waiter,
+              discount: Number(r.discount || 0), perHead: Number(r.per_head || 0), orderType: r.order_type || 'Dine-in',
+              customerPhone: r.customer_phone || '', customerAddress: r.customer_address || '',
+              closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
+            }));
+          }
+          if (Array.isArray(cloudExp) && cloudExp.length > 0) {
+            expenseLedger = cloudExp.map(r => ({
+              id: r.id, date: r.date, category: r.category, amount: Number(r.amount || 0), description: r.description || '', meta: r.meta || {}
+            }));
+          }
+          if (Array.isArray(cloudCancelled) && cloudCancelled.length > 0) {
+            cancelledOrders = cloudCancelled.map(r => ({
+              id: r.id, date: r.date, time: r.time, orderId: r.order_id, table: r.table_id,
+              orderType: r.order_type || 'Dine-in', items: r.items || [], cost: Number(r.cost || 0),
+              waiter: r.waiter || '', cancelType: r.cancel_type || 'Partial',
+              closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
+            }));
+          }
+          if (Array.isArray(cloudDailyCloseouts) && cloudDailyCloseouts.length > 0) {
+            dailyCloseouts = cloudDailyCloseouts.map(r => ({
+              id: r.id, date: r.date, time: r.time, totalSales: Number(r.total_sales || 0),
+              salesCount: Number(r.sales_count || 0), totalExpenses: Number(r.total_expenses || 0), totalProfit: Number(r.total_profit || 0),
+              totalCancelledCost: Number(r.total_cancelled_cost || 0), cancelledCount: Number(r.cancelled_count || 0),
+              closedBy: r.closed_by || 'Admin', timestamp: r.timestamp || 0
+            }));
+          }
+          if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
+            appUsers = cloudUsers.map(r => ({
+              username: r.username, password: r.password, role: r.role || 'Admin', name: r.name || ''
+            }));
+          }
+          if (Array.isArray(cloudSettings) && cloudSettings.length > 0) {
+            const pSetting = cloudSettings.find(s => s.key === 'nextPettyId');
+            if (pSetting && pSetting.value && pSetting.value.nextPettyId) {
+              nextPettyId = pSetting.value.nextPettyId;
+            }
+          }
         }
+      } catch (err) {
+        console.warn('Supabase load warning:', err);
       }
-
-      console.log('☁️ Loaded all tables from Supabase Cloud DB ✓');
     }
 
     // Default tables fallback if empty
