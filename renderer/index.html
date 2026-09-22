@@ -1010,7 +1010,7 @@ function handleLoginForm(e) {
   return false;
 }
 
-function performUserSessionLogin(user) {
+async function performUserSessionLogin(user) {
   try {
     currentUser = user.username;
     currentRole = user.role || 'Admin';
@@ -1028,6 +1028,10 @@ function performUserSessionLogin(user) {
 
     if (typeof buildNav === 'function') buildNav();
 
+    if (typeof loadFromLocal === 'function') {
+      await loadFromLocal().catch(e => console.warn('Load local error:', e));
+    }
+
     const loginScr = document.getElementById('login-screen');
     if (loginScr) loginScr.style.display = 'none';
 
@@ -1037,13 +1041,6 @@ function performUserSessionLogin(user) {
     const targetSec = (currentRole === 'Order Taker') ? 'orders' : 'dashboard';
     if (currentRole === 'Order Taker') ordersView = 'new';
     if (typeof showSection === 'function') showSection(targetSec);
-
-    if (typeof migrateLocalStorageIfNeeded === 'function') {
-      migrateLocalStorageIfNeeded().catch(e => console.warn('Migration:', e));
-    }
-    if (typeof loadFromLocal === 'function') {
-      loadFromLocal().catch(e => console.warn('Load local error:', e));
-    }
 
     if (typeof toast === 'function') toast(`Welcome ${user.name || user.username}!`, 'success');
   } catch (err) {
@@ -5890,7 +5887,13 @@ async function migrateBrowserLocalStorageToApi() {
   }
 }
 
-async function saveToLocal() {
+let isDataLoaded = false;
+
+async function saveToLocal(force = false) {
+  if (!isDataLoaded && !force) {
+    console.warn('⚠️ Prevented saveToLocal: Initial data load is not complete yet.');
+    return;
+  }
   try {
     const currentSupConfig = {
       url: localStorage.getItem('dogar_supabase_url') || window.SUPABASE_URL || '',
@@ -6282,13 +6285,13 @@ async function resetToDogarSajjiMenu() {
         supabaseClient.from('menu_categories').delete().neq('id', -1),
         supabaseClient.from('deals').delete().neq('id', -1)
       ]);
-      await saveToLocal();
+      await saveToLocal(true);
       if (typeof showToast === 'function') showToast('⚡ Supabase Cloud DB successfully reset to Dogar Sajji Menu!', 'success');
     } catch(e) {
       console.warn('Supabase reset warning:', e);
     }
   } else {
-    await saveToLocal();
+    await saveToLocal(true);
     if (typeof showToast === 'function') showToast('⚡ Menu reset to Dogar Sajji Menu!', 'success');
   }
 
@@ -6621,6 +6624,18 @@ async function loadFromLocal() {
         reservedTime: ''
       }));
     }
+
+    isDataLoaded = true;
+
+    // Refresh currently visible section if app screen is active
+    const appScr = document.getElementById('app');
+    if (appScr && appScr.style.display !== 'none' && typeof activeSection !== 'undefined' && activeSection) {
+      const content = document.getElementById('content');
+      if (content && typeof renderSection === 'function') {
+        content.innerHTML = renderSection(activeSection);
+        if (typeof addSectionListeners === 'function') addSectionListeners(activeSection);
+      }
+    }
   } catch(e) { console.warn('Database load warning:', e); }
 }
 
@@ -6692,7 +6707,7 @@ async function clearAllExceptMenu() {
   ];
   staleKeys.forEach(k => localStorage.removeItem(k));
 
-  await saveToLocal();
+  await saveToLocal(true);
   if (supabaseClient) {
     try {
       await Promise.all([

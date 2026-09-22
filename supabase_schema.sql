@@ -106,7 +106,9 @@ CREATE TABLE IF NOT EXISTS public.petty_cash (
   category TEXT,
   amount NUMERIC DEFAULT 0,
   date TEXT,
-  notes TEXT DEFAULT ''
+  notes TEXT DEFAULT '',
+  closed INT DEFAULT 0,
+  closeout_id TEXT DEFAULT ''
 );
 
 -- 10. SALES LEDGER
@@ -123,6 +125,8 @@ CREATE TABLE IF NOT EXISTS public.sales_ledger (
   order_type TEXT DEFAULT 'Dine-in',
   customer_phone TEXT DEFAULT '',
   customer_address TEXT DEFAULT '',
+  closed INT DEFAULT 0,
+  closeout_id TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -162,6 +166,8 @@ CREATE TABLE IF NOT EXISTS public.cancelled_orders (
   cost NUMERIC DEFAULT 0,
   waiter TEXT DEFAULT '',
   cancel_type TEXT DEFAULT 'Partial',
+  closed INT DEFAULT 0,
+  closeout_id TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

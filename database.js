@@ -16,29 +16,26 @@ let db;
 let currentDbPath = '';
 
 function getSharedDbDirectory() {
-  let dbDir = '';
+  // Always prioritize the project data directory first
+  const projectDataDir = path.join(__dirname, 'data');
+  try {
+    if (!fs.existsSync(projectDataDir)) {
+      fs.mkdirSync(projectDataDir, { recursive: true });
+    }
+    return projectDataDir;
+  } catch (err) {
+    console.warn('Could not use project data dir, falling back to userData:', err);
+  }
+
+  // Fallback if project data dir is not writable (e.g. packaged read-only directory)
   try {
     if (app && typeof app.getPath === 'function') {
-      try {
-        dbDir = path.join(app.getPath('commonUserData'), 'DogarSajji');
-      } catch (e) {}
-      if (!dbDir) {
-        const commonDir = process.env.ALLUSERSPROFILE || process.env.ProgramData;
-        if (commonDir) {
-          dbDir = path.join(commonDir, 'DogarSajji');
-        }
-      }
-      if (!dbDir) {
-        dbDir = app.getPath('userData');
-      }
+      const userDir = app.getPath('userData');
+      if (userDir) return userDir;
     }
-  } catch (err) {
-    dbDir = path.join(__dirname, 'data');
-  }
-  if (!dbDir) {
-    dbDir = path.join(__dirname, 'data');
-  }
-  return dbDir;
+  } catch (e) {}
+
+  return projectDataDir;
 }
 
 function initDatabase() {
