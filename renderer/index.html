@@ -3141,9 +3141,10 @@ function renderBilling(){
     <div>
       <div class="bill-preview" id="bill-display">
         <div class="bill-header">
-          <div class="bill-logo">🍗 Dogar Sajji & Restaurant</div>
+          <img src="${appLogoUrl}" style="height:80px;width:auto;object-fit:contain;margin-bottom:.4rem;display:block;margin-left:auto;margin-right:auto;filter:drop-shadow(0 4px 10px rgba(245,158,11,0.3))" alt="Dogar Sajji & Restaurant Logo">
+          <div class="bill-logo">Dogar Sajji & Restaurant</div>
           <div style="font-size:.78rem;color:var(--text2);margin-top:.25rem">Taste the Best Sajji in Town</div>
-          <div style="font-size:.72rem;color:var(--text3);margin-top:.1rem">📞 0300-1863406 · 0343-4763406</div>
+          <div style="font-size:.72rem;color:var(--text3);margin-top:.1rem">📞 0300-1863406</div>
           <div style="font-size:.68rem;color:var(--text3);margin-top:.1rem">In Front of Govt Graduate College, Multan Road, Muzaffargarh</div>
           <div style="font-size:.72rem;color:var(--text3);margin-top:.25rem">${new Date().toLocaleString('en-PK')}</div>
         </div>
@@ -3224,7 +3225,7 @@ function generateMergedBill(billKey,type,quiet=false){
       <img src="${appLogoUrl}" style="height:90px;width:auto;object-fit:contain;margin-bottom:.4rem;filter:drop-shadow(0 4px 10px rgba(255,200,0,0.3))" alt="Dogar Sajji & Restaurant Logo">
       <div class="bill-logo">Dogar Sajji & Restaurant</div>
       <div style="font-size:.78rem;color:var(--text2);margin-top:.25rem">Taste the Best Sajji in Town</div>
-      <div style="font-size:.7rem;color:var(--text3);margin-top:.1rem">📞 0300-1863406 · 0343-4763406</div>
+      <div style="font-size:.7rem;color:var(--text3);margin-top:.1rem">📞 0300-1863406</div>
       <div style="font-size:.66rem;color:var(--text3);margin-top:.1rem">In Front of Govt Graduate College, Multan Road, Muzaffargarh</div>
       <div style="font-size:.72rem;color:var(--text3);margin-top:.25rem">${new Date().toLocaleString('en-PK')}</div>
       <div style="font-size:.85rem;color:var(--gold);margin-top:.5rem;font-weight:600">${headerLabel} · ${group.length>1?'Merged Bill':'Bill #'+group[0].id}</div>
@@ -3391,7 +3392,7 @@ function buildReceiptHtml(isCustomerInvoice = false) {
     <div class="logo-main">Dogar Sajji & Restaurant</div>
     <div class="logo-sub">Taste the Best Sajji in Town</div>
     <div class="logo-tag">${tagLabel}</div>
-    <div class="logo-info">&#128222; 0300-1863406 / 0343-4763406</div>
+    <div class="logo-info">&#128222; 0300-1863406</div>
     <div class="logo-addr">In Front of Govt Graduate College, Multan Road, Muzaffargarh</div>
   </div>
 
@@ -4736,9 +4737,10 @@ function reprintCloseoutReceipt(closeoutId) {
     .box-title { font-size: 11px; font-weight: 800; letter-spacing: 0.5px; border-bottom: 1px solid #000; padding-bottom: 4px; margin-bottom: 6px; text-transform: uppercase; }
   </style>
   </head><body>
+  <img src="${appLogoUrl}" style="max-height:85px;width:auto;margin:0 auto 6px auto;display:block" alt="Dogar Sajji & Restaurant Logo">
   <div class="center heavy" style="font-size:16px;letter-spacing:1px;text-transform:uppercase">DOGAR SAJJI & RESTAURANT</div>
   <div class="center" style="font-size:10px;font-weight:500;margin-top:2px">In Front of Govt Graduate College, Multan Road, Muzaffargarh</div>
-  <div class="center" style="font-size:10px;font-weight:600">Ph: 0300-1863406 / 0343-4763406</div>
+  <div class="center" style="font-size:10px;font-weight:600">Ph: 0300-1863406</div>
   <div class="divider-solid"></div>
   <div class="center heavy" style="font-size:13px;letter-spacing:1px;margin:3px 0">*** END OF DAY SALES REPORT ***</div>
   <div class="center heavy" style="font-size:11px;margin-bottom:3px;letter-spacing:0.5px">[ REPRINTED OWNER RECEIPT ]</div>
@@ -4955,9 +4957,10 @@ async function printEndDaySalesReport() {
   </style>
   </head><body>
 
+  <img src="${appLogoUrl}" style="max-height:85px;width:auto;margin:0 auto 6px auto;display:block" alt="Dogar Sajji & Restaurant Logo">
   <div class="center heavy" style="font-size:16px;letter-spacing:1px;text-transform:uppercase">DOGAR SAJJI & RESTAURANT</div>
   <div class="center" style="font-size:10px;font-weight:500;margin-top:2px">In Front of Govt Graduate College, Multan Road, Muzaffargarh</div>
-  <div class="center" style="font-size:10px;font-weight:600">Ph: 0300-1863406 / 0343-4763406</div>
+  <div class="center" style="font-size:10px;font-weight:600">Ph: 0300-1863406</div>
   
   <div class="divider-solid"></div>
   <div class="center heavy" style="font-size:13px;letter-spacing:1px;margin:3px 0">*** END OF DAY SALES REPORT ***</div>
