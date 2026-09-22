@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Dogar Sajji & Restaurant RMS</title>
 <link rel="icon" href="../logo.png" type="image/png">
-<link rel="shortcut icon" href="../logo.png" type="image/png">
+<script src="supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-config.js"></script>
 <style>
@@ -904,7 +904,17 @@ async function loadAppUsers(){
   ];
 
   try {
-    if (window.api && window.api.getAppUsers) {
+    if (supabaseClient) {
+      const { data: cloudUsers, error: eUsers } = await supabaseClient.from('app_users').select('*');
+      if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
+        appUsers = cloudUsers.map(r => ({
+          username: r.username,
+          password: r.password,
+          role: r.role || 'Admin',
+          name: r.name || r.username
+        }));
+      }
+    } else if (window.api && window.api.getAppUsers) {
       const dbUsers = await window.api.getAppUsers();
       if (Array.isArray(dbUsers) && dbUsers.length > 0) {
         appUsers = dbUsers;
