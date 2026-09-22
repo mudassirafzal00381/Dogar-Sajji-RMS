@@ -1058,14 +1058,15 @@ function performUserSessionLogin(user) {
     if (appScr) appScr.style.display = 'flex';
 
     const targetSec = (currentRole === 'Order Taker') ? 'orders' : 'dashboard';
-    if (typeof showSection === 'function') showSection(targetSec);
 
     if (typeof migrateLocalStorageIfNeeded === 'function') {
-      migrateLocalStorageIfNeeded().catch(e => console.warn('Migration:', e));
+      await migrateLocalStorageIfNeeded().catch(e => console.warn('Migration:', e));
     }
     if (typeof loadFromLocal === 'function') {
-      loadFromLocal().catch(e => console.warn('Load local error:', e));
+      await loadFromLocal().catch(e => console.warn('Load local error:', e));
     }
+
+    if (typeof showSection === 'function') showSection(targetSec);
 
     if (typeof toast === 'function') toast(`Welcome ${user.name || user.username}!`, 'success');
   } catch (err) {
@@ -6520,6 +6521,15 @@ async function loadFromLocal() {
       }
 
       console.log('☁️ Loaded all tables from Supabase Cloud DB ✓');
+
+      if (typeof renderOrders === 'function') renderOrders();
+      if (typeof renderTables === 'function') renderTables();
+      if (typeof renderMenu === 'function') renderMenu();
+      if (typeof renderInventory === 'function') renderInventory();
+      if (typeof renderEmployees === 'function') renderEmployees();
+      if (typeof renderFinance === 'function') renderFinance();
+      if (typeof updateStats === 'function') updateStats();
+      if (typeof buildNav === 'function') buildNav();
     }
   } catch(e) { console.warn('Database load warning:', e); }
 }
