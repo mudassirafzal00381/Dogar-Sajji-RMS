@@ -2203,8 +2203,8 @@ function renderManager(){
         </div>
         <div class="order-footer">
           ${o.status === 'pending'
-            ? `<button class="btn-sm btn-green" onclick="updateOrder('${o.id}','confirmed')">✓ Accept</button><button class="btn-sm btn-gold" style="font-weight:700" onclick="oneClickPrintAndSettle('${type==='Dine-in'?o.table:o.id}','${type}')">🖨️ Print & Settle</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">Cancel</button>`
-            : `<button class="btn-sm btn-gold" style="font-weight:700" onclick="oneClickPrintAndSettle('${type==='Dine-in'?o.table:o.id}','${type}')">🖨️ Print & Settle</button><button class="btn-sm btn-green" style="font-weight:600" onclick="payOrder('${o.id}')">⚡ Edit Bill</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">Cancel</button>`
+            ? `<button class="btn-sm btn-green" onclick="updateOrder('${o.id}','confirmed')">✓ Accept</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">Cancel Order</button>`
+            : `<button class="btn-sm btn-green" style="font-weight:700" onclick="payOrder('${o.id}')">⚡ Pay & Bill</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">Cancel Order</button>`
           }
           <button class="btn-sm btn-blue" onclick="editOrder('${o.id}')">Edit</button>
         </div>
@@ -3458,7 +3458,7 @@ function buildReceiptHtml(isCustomerInvoice = false) {
   </body></html>`;
 }
 
-function printCustomerInvoice(finalize = true) {
+function printCustomerInvoice() {
   const billDisplay = document.getElementById('bill-display');
   if(!billDisplay || !currentBillKey){
     toast('Please generate a bill first','error'); return;
@@ -3470,11 +3470,11 @@ function printCustomerInvoice(finalize = true) {
     return;
   }
 
-  const printerDevice = localStorage.getItem('dogar_bill_printer') || localStorage.getItem('hfc_printer_device') || '';
-  const silentPrint = localStorage.getItem('dogar_silent_print') !== 'false' && localStorage.getItem('hfc_silent_print') !== 'false';
+  const printerDevice = localStorage.getItem('hfc_printer_device') || '';
+  const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
 
   if (window.api && window.api.printReceipt) {
-    toast('Printing Customer Invoice & settling...', 'info');
+    toast('Printing Customer Invoice...', 'info');
     window.api.printReceipt(htmlContent, {
       silent: silentPrint,
       deviceName: printerDevice || undefined
@@ -3486,8 +3486,6 @@ function printCustomerInvoice(finalize = true) {
   } else {
     fallbackPrintWindow(htmlContent, false);
   }
-
-  if (finalize) finalizeSale();
 }
 
 // ── DATABASE BACKUP ──
@@ -3844,12 +3842,19 @@ async function finalizeSale(){
 
   const billKey=currentBillKey, orderIds=currentBillOrderIds, type=currentBillOrderType;
 
-  let group=orderIds.map(id=>orders.find(o=>o.id===id)).filter(Boolean);
-  if (group.length === 0 && unpaidBills && unpaidBills[billKey]) {
-    const ub = unpaidBills[billKey];
+  let group = (orderIds || []).map(id => orders.find(o => String(o.id) === String(id))).filter(Boolean);
+  if (group.length === 0) {
+    if (type === 'Dine-in') {
+      group = orders.filter(o => String(o.table) === String(billKey));
+    } else {
+      group = orders.filter(o => String(o.id) === String(billKey));
+    }
+  }
+  if (group.length === 0 && unpaidBills && (unpaidBills[billKey] || unpaidBills[String(billKey)])) {
+    const ub = unpaidBills[billKey] || unpaidBills[String(billKey)];
     group = [{
       id: ub.orderId || String(billKey),
-      table: type === 'Dine-in' ? billKey : null,
+      table: type === 'Dine-in' ? Number(billKey) : null,
       orderType: type,
       items: ub.items || [],
       customerPhone: '',
@@ -3868,7 +3873,7 @@ async function finalizeSale(){
 
   const slId='SL'+String(salesLedger.length+1).padStart(3,'0');
   salesLedger.push({
-    id:slId, date:today, table:type==='Dine-in'?billKey:null,
+    id:slId, date:today, table:type==='Dine-in'?Number(billKey):null,
     orderType:type, customerPhone:group[0]?.customerPhone||'', customerAddress:group[0]?.customerAddress||'',
     items, total: Number(total || 0),
     payment:selectedPayment,
@@ -3877,11 +3882,14 @@ async function finalizeSale(){
     closed: 0, closeoutId: ''
   });
 
+  const billKeyStr = String(billKey);
+  const orderIdsSet = new Set((orderIds || []).map(id => String(id)));
+
   if(API_CONNECTED){
-    for(const id of orderIds){
+    for(const id of (orderIds || [])){
       await apiPut('/api/orders/'+id, {status:'completed'}).catch(()=>{});
     }
-    if(type==='Dine-in')await apiPut('/api/tables/'+billKey, {status:'available'}).catch(()=>{});
+    if(type==='Dine-in')await apiPut('/api/tables/'+billKey, {status:'available', persons:0}).catch(()=>{});
     await apiCall('unpaid-bills/' + billKey, 'DELETE').catch(()=>{});
   }
 
@@ -3889,38 +3897,30 @@ async function finalizeSale(){
   if (supabaseClient) {
     try {
       if (type === 'Dine-in') {
-        await supabaseClient.from('orders').delete().eq('table_id', billKey);
-        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey));
-        await supabaseClient.from('tables').upsert([{ id: billKey, status: 'available', persons: 0 }]);
+        const delTblId = Number(billKey);
+        await supabaseClient.from('orders').delete().eq('table_id', delTblId);
+        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', billKeyStr);
+        await supabaseClient.from('tables').upsert([{ id: delTblId, status: 'available', persons: 0, seats: 4, reserved_for: '', reserved_time: '' }]);
       } else {
-        const delIds = [String(billKey), ...orderIds.map(String)];
+        const delIds = [billKeyStr, ...(orderIds || []).map(String)];
         await supabaseClient.from('orders').delete().in('id', delIds);
-        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey));
+        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', billKeyStr);
       }
-      await supabaseClient.from('sales_ledger').upsert([{
-        id: slId, date: today, table_id: type === 'Dine-in' ? billKey : null,
-        items, total: Number(total || 0), payment: selectedPayment,
-        waiter: group[0]?.waiter || currentUser, discount: discPct, per_head: perHead,
-        order_type: type, customer_phone: group[0]?.customerPhone || '',
-        customer_address: group[0]?.customerAddress || '',
-        closed: 0, closeout_id: ''
-      }]);
     } catch(e) { console.warn('Supabase cleanup warning:', e); }
   }
 
-  // Remove from in-memory orders array so Live Orders Queue updates immediately
+  // Remove settled orders from in-memory orders array so Live Orders Queue updates immediately
   if (type === 'Dine-in') {
-    orders = orders.filter(x => x.table !== billKey && !orderIds.includes(x.id));
-    const t = tables.find(t => t.id === billKey);
-    if (t) { t.status = 'available'; t.persons = 0; }
+    orders = orders.filter(x => String(x.table) !== billKeyStr && !orderIdsSet.has(String(x.id)));
+    const t = tables.find(t => String(t.id) === billKeyStr);
+    if (t) { t.status = 'available'; t.persons = 0; t.reservedFor = ''; t.reservedTime = ''; }
   } else {
-    orders = orders.filter(x => x.id !== billKey && !orderIds.includes(x.id));
+    orders = orders.filter(x => String(x.id) !== billKeyStr && !orderIdsSet.has(String(x.id)));
   }
 
   delete unpaidBills[billKey];
-  delete unpaidBills[String(billKey)];
-  if (typeof billKey === 'number') delete unpaidBills[String(billKey)];
-  if (typeof billKey === 'string' && !isNaN(Number(billKey))) delete unpaidBills[Number(billKey)];
+  delete unpaidBills[billKeyStr];
+  if (!isNaN(Number(billKey))) delete unpaidBills[Number(billKey)];
 
   currentBillKey = null;
   currentBillOrderIds = [];
@@ -3936,11 +3936,15 @@ async function finalizeSale(){
   if (typeof updatePerHeadCalc==='function') updatePerHeadCalc();
   if (typeof updateCashReceivedCalc==='function') updateCashReceivedCalc(0);
 
+  // Save to SQLite, LocalStorage and Supabase
   await saveToLocal();
+
   ordersView = 'board';
   showSection('orders');
   if (typeof renderOrders === 'function') renderOrders();
   if (typeof renderTables === 'function') renderTables();
+  if (typeof renderDashboard === 'function') renderDashboard();
+  if (typeof updateStats === 'function') updateStats();
   toast(type==='Dine-in'?'Sale completed! Table cleared & added to records ✓':'Sale completed & added to records ✓');
 }
 
