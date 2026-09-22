@@ -725,10 +725,22 @@ tr:hover td{background:rgba(201,168,76,.04)}
 
 <script>
 
-// ── PURGE LEGACY CACHE ──
+// ── PURGE LEGACY CACHE & ONE-TIME CLEAN WIPE ──
 (function(){
   const legacyKeys = ['hfc_supabase_url','hfc_supabase_key','hfc_menu_items','db_menu_items','desi-bites'];
   legacyKeys.forEach(k => localStorage.removeItem(k));
+
+  const wipeVersion = 'dogar_wipe_v4';
+  if (localStorage.getItem(wipeVersion) !== 'true') {
+    const staleKeys = [
+      'dogar_web_orders', 'dogar_web_unpaid_bills', 'dogar_web_inventory',
+      'dogar_web_employees', 'dogar_web_petty_cash', 'dogar_web_sales_ledger',
+      'dogar_web_expense_ledger', 'dogar_web_cancelled_orders', 'dogar_web_daily_closeouts',
+      'dogar_web_deals', 'dogar_web_next_petty_id'
+    ];
+    staleKeys.forEach(k => localStorage.removeItem(k));
+    localStorage.setItem(wipeVersion, 'true');
+  }
 })();
 
 
@@ -6471,7 +6483,7 @@ async function loadFromLocal() {
         supabaseClient.from('settings').select('*').catch(() => ({ data: null }))
       ]);
 
-      if (Array.isArray(cloudOrders) && cloudOrders.length > 0) {
+      if (Array.isArray(cloudOrders)) {
         orders = cloudOrders.map(r => ({
           id: r.id, table: r.table_id, items: r.items || [], status: r.status,
           note: r.note, time: r.time, waiter: r.waiter, isAddOn: !!r.is_add_on, total: Number(r.total || 0),
@@ -6487,7 +6499,7 @@ async function loadFromLocal() {
         }));
       }
 
-      if (Array.isArray(cloudBills) && cloudBills.length > 0) {
+      if (Array.isArray(cloudBills)) {
         const ubObj = {};
         cloudBills.forEach(r => {
           ubObj[r.bill_key] = {
@@ -6508,34 +6520,34 @@ async function loadFromLocal() {
         menuCategories = cloudCats.map(r => r.name);
       }
 
-      if (Array.isArray(cloudDeals) && cloudDeals.length > 0) {
+      if (Array.isArray(cloudDeals)) {
         deals = cloudDeals.map(r => ({
           id: r.id, name: r.name, category: r.category, items: r.items || [],
           price: r.price, available: r.available
         }));
       }
 
-      if (Array.isArray(cloudInv) && cloudInv.length > 0) {
+      if (Array.isArray(cloudInv)) {
         inventory = cloudInv.map(r => ({
           id: r.id, item: r.item, unit: r.unit || '', stock: r.stock || 0, min: r.min || 0, price: r.price || 0, last: r.last || ''
         }));
       }
 
-      if (Array.isArray(cloudEmp) && cloudEmp.length > 0) {
+      if (Array.isArray(cloudEmp)) {
         employees = cloudEmp.map(r => ({
           id: r.id, name: r.name, cnic: r.cnic || '', phone: r.phone || '', designation: r.designation || '', salary: r.salary || 0,
           status: r.status || 'Present', address: r.address || '', salaryPayments: r.salary_payments || [], advances: r.advances || [], attendanceLog: r.attendance_log || []
         }));
       }
 
-      if (Array.isArray(cloudPc) && cloudPc.length > 0) {
+      if (Array.isArray(cloudPc)) {
         pettyCash = cloudPc.map(r => ({
           id: r.id, name: r.name, category: r.category, amount: Number(r.amount || 0), date: r.date || '', notes: r.notes || '',
           closed: !!r.closed, closeoutId: r.closeout_id || r.closeoutId || ''
         }));
       }
 
-      if (Array.isArray(cloudSales) && cloudSales.length > 0) {
+      if (Array.isArray(cloudSales)) {
         salesLedger = cloudSales.map(r => ({
           id: r.id, date: r.date, table: r.table_id, items: r.items || [], total: Number(r.total || 0), payment: r.payment, waiter: r.waiter,
           discount: Number(r.discount || 0), perHead: Number(r.per_head || 0), orderType: r.order_type || 'Dine-in',
@@ -6544,13 +6556,13 @@ async function loadFromLocal() {
         }));
       }
 
-      if (Array.isArray(cloudExp) && cloudExp.length > 0) {
+      if (Array.isArray(cloudExp)) {
         expenseLedger = cloudExp.map(r => ({
           id: r.id, date: r.date, category: r.category, amount: Number(r.amount || 0), description: r.description || '', meta: r.meta || {}
         }));
       }
 
-      if (Array.isArray(cloudCancelled) && cloudCancelled.length > 0) {
+      if (Array.isArray(cloudCancelled)) {
         cancelledOrders = cloudCancelled.map(r => ({
           id: r.id, date: r.date, time: r.time, orderId: r.order_id, table: r.table_id,
           orderType: r.order_type || 'Dine-in', items: r.items || [], cost: Number(r.cost || 0),
@@ -6559,7 +6571,7 @@ async function loadFromLocal() {
         }));
       }
 
-      if (Array.isArray(cloudDailyCloseouts) && cloudDailyCloseouts.length > 0) {
+      if (Array.isArray(cloudDailyCloseouts)) {
         dailyCloseouts = cloudDailyCloseouts.map(r => ({
           id: r.id, date: r.date, time: r.time, totalSales: Number(r.total_sales || 0),
           salesCount: Number(r.sales_count || 0), totalExpenses: Number(r.total_expenses || 0), totalProfit: Number(r.total_profit || 0),
@@ -6630,10 +6642,71 @@ function openCloudConfigModal() {
       <div style="display:flex;gap:.5rem;margin-top:1.5rem;flex-wrap:wrap">
         <button class="btn" style="flex:1" onclick="saveCloudConfig()">💾 Save & Connect</button>
         <button class="btn" style="background:var(--surface2);color:var(--text1);border:1px solid var(--border);flex:1" onclick="pushAllDataToCloud()">⬆️ Push Local → Cloud</button>
+        <button class="btn" style="background:rgba(239,68,68,0.15);color:var(--red);border:1px solid var(--red);flex:1 1 100%;margin-top:.4rem" onclick="clearAllExceptMenu()">🧹 Wipe All Data Except Menu & Categories</button>
         <button class="btn" style="background:var(--surface2);color:var(--text1);border:1px solid var(--border);flex:1" onclick="closeModal()">Close</button>
       </div>
     </div>
   `);
+}
+
+async function clearAllExceptMenu() {
+  if (!confirm('Are you sure you want to clear all orders, sales, expenses, and inventory while keeping Menu & Categories?')) return;
+  orders = [];
+  unpaidBills = {};
+  inventory = [];
+  employees = [];
+  pettyCash = [];
+  salesLedger = [];
+  expenseLedger = [];
+  cancelledOrders = [];
+  dailyCloseouts = [];
+  deals = [];
+  tables = Array.from({ length: 12 }, (_, i) => ({
+    id: i + 1,
+    status: 'available',
+    persons: 0,
+    seats: 4,
+    reservedFor: '',
+    reservedTime: ''
+  }));
+
+  const staleKeys = [
+    'dogar_web_orders', 'dogar_web_unpaid_bills', 'dogar_web_inventory',
+    'dogar_web_employees', 'dogar_web_petty_cash', 'dogar_web_sales_ledger',
+    'dogar_web_expense_ledger', 'dogar_web_cancelled_orders', 'dogar_web_daily_closeouts',
+    'dogar_web_deals', 'dogar_web_next_petty_id'
+  ];
+  staleKeys.forEach(k => localStorage.removeItem(k));
+
+  await saveToLocal();
+  if (supabaseClient) {
+    try {
+      await Promise.all([
+        supabaseClient.from('orders').delete().neq('id', '___NONE___'),
+        supabaseClient.from('unpaid_bills').delete().neq('bill_key', '___NONE___'),
+        supabaseClient.from('inventory').delete().gte('id', 0),
+        supabaseClient.from('employees').delete().gte('id', 0),
+        supabaseClient.from('petty_cash').delete().gte('id', 0),
+        supabaseClient.from('sales_ledger').delete().neq('id', '___NONE___'),
+        supabaseClient.from('expense_ledger').delete().gte('id', 0),
+        supabaseClient.from('cancelled_orders').delete().neq('id', '___NONE___'),
+        supabaseClient.from('daily_closeouts').delete().neq('id', '___NONE___'),
+        supabaseClient.from('deals').delete().gte('id', 0),
+        supabaseClient.from('tables').upsert(tables.map(t => ({
+          id: t.id, status: 'available', persons: 0, seats: 4, reserved_for: '', reserved_time: ''
+        })))
+      ]);
+    } catch(err) {
+      console.warn('Cloud wipe error:', err);
+    }
+  }
+
+  showToast('✅ All data cleared! Menu & Categories preserved.', 'success');
+  closeModal();
+  if (typeof renderDashboard === 'function') renderDashboard();
+  if (typeof renderOrders === 'function') renderOrders();
+  if (typeof renderTables === 'function') renderTables();
+  if (typeof renderMenu === 'function') renderMenu();
 }
 
 async function saveCloudConfig() {
