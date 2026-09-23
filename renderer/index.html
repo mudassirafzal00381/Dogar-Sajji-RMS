@@ -887,6 +887,18 @@ let printerConfig = {
   billing: { type: 'network', ip: '', port: 9100, printerName: '' },
 };
 
+// ── PRINT AGENT ADDRESS ──
+// Every other API call targets window.location.origin (same-origin as
+// whatever page/server this app loaded from), which is fine when that's
+// already a device on the restaurant's WiFi. But when the app is loaded
+// from a public URL (e.g. the Vercel deployment), same-origin can never
+// reach a printer on the restaurant's private WiFi at all — so print
+// requests specifically need to be pointed at the counter PC's own LAN
+// address instead. Set once here (synced the same way as printerConfig)
+// and every device, regardless of which URL loaded the app, sends print
+// jobs straight to that fixed address.
+let printAgentUrl = '';
+
 // ── SALES LEDGER (historical completed sales for date-range reporting) ──
 let salesLedger = []; // Populated when sales are completed
 let expenseLedger = []; // Populated by salary payments and manual entries
@@ -2562,12 +2574,18 @@ function makePrintJobId(prefix) {
 }
 
 // Printing needs a server.js instance on the SAME LAN as the printers —
-// that only ever exists at localhost (the Electron app) or a private-network
-// address (a browser pointed at the counter PC's own WiFi IP). A public host
-// like a Vercel deployment can never reach a private 192.168.x printer at
-// all, no matter what — so when a print request can't reach any backend at
-// all, this tells the two situations apart and gives the actionable one.
+// that only ever exists at localhost (the Electron app), a private-network
+// address (a browser pointed at the counter PC's own WiFi IP), or wherever
+// printAgentUrl explicitly points (see Printer Settings — this is what lets
+// a page loaded from a public URL like Vercel still print, as long as the
+// device is on the same WiFi as the counter PC that address points to).
+// Note: this builds plain text only (no "<...>" placeholders) because a
+// caller may render it via innerHTML, where angle brackets get silently
+// swallowed as an unrecognized tag instead of showing up as text.
 function unreachablePrintMessage() {
+  if (printAgentUrl) {
+    return `Could not reach the print agent at ${printAgentUrl} — make sure that PC is powered on, connected to WiFi, and the app is running.`;
+  }
   const proto = window.location.protocol;
   const host = window.location.hostname;
   const isLocal = !proto.startsWith('http')
@@ -2575,12 +2593,12 @@ function unreachablePrintMessage() {
     || /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
   return isLocal
     ? 'Print service unreachable — make sure the app/server is running on this PC and try again.'
-    : `Printing only works from a device on the restaurant's WiFi — this page is open on a public web link (${host}), which can never reach a printer on your local network. Open the app at your counter PC's local address instead (e.g. http://<that PC's WiFi IP>:4850).`;
+    : `Printing needs a Print Agent Address set in Printer Settings — this page is open on a public web link (${host}), which can't reach a printer by itself. Ask your admin to open Printer Settings and set the Print Agent Address to the counter PC's WiFi address.`;
 }
 
 async function printKitchenReceipt(payload) {
   const jobId = payload.jobId || makePrintJobId('kitchen');
-  const result = await apiCall('print/kitchen', 'POST', { ...payload, jobId });
+  const result = await printApiCall('print/kitchen', 'POST', { ...payload, jobId });
   if (!result) {
     toast(unreachablePrintMessage(), 'error');
     return { success: false, error: 'unreachable', jobId };
@@ -2595,7 +2613,7 @@ async function printKitchenReceipt(payload) {
 
 async function printCustomerBill(payload) {
   const jobId = payload.jobId || makePrintJobId('billing');
-  const result = await apiCall('print/billing', 'POST', { ...payload, jobId });
+  const result = await printApiCall('print/billing', 'POST', { ...payload, jobId });
   if (!result) {
     toast(unreachablePrintMessage(), 'error');
     return { success: false, error: 'unreachable', jobId };
@@ -2614,7 +2632,7 @@ async function printCustomerBill(payload) {
 // docType flag telling the print agent which ESC/POS template to build.
 async function printClosingReport(payload) {
   const jobId = payload.jobId || makePrintJobId('closing');
-  const result = await apiCall('print/billing', 'POST', { ...payload, docType: 'closing-report', jobId });
+  const result = await printApiCall('print/billing', 'POST', { ...payload, docType: 'closing-report', jobId });
   if (!result) {
     toast(unreachablePrintMessage(), 'error');
     return { success: false, error: 'unreachable', jobId };
@@ -2629,7 +2647,7 @@ async function printClosingReport(payload) {
 
 async function testPrinterConnection(target) {
   const jobId = makePrintJobId('test_' + target);
-  const result = await apiCall('print/test', 'POST', { target, jobId });
+  const result = await printApiCall('print/test', 'POST', { target, jobId });
   if (!result) return { success: false, error: unreachablePrintMessage() };
   return result;
 }
@@ -3448,7 +3466,7 @@ window._localPrintersCache = null;
 
 async function fetchLocalPrinters(force) {
   if (window._localPrintersCache && !force) return window._localPrintersCache;
-  const result = await apiCall('print/local-printers');
+  const result = await printApiCall('print/local-printers');
   window._localPrintersCache = (result && result.success && Array.isArray(result.printers)) ? result.printers : [];
   return window._localPrintersCache;
 }
@@ -3458,6 +3476,16 @@ function renderPrinterSettingsModal(status) {
   return `
     <h3 style="margin-bottom:.4rem">🖨 Printer Settings</h3>
     <p style="font-size:.82rem;color:var(--text2);margin-bottom:1.1rem">Configure each printer once — every PC and mobile Order Taker automatically uses these same two printers, with no per-device setup. Use "Network" for a printer any device should reach directly over WiFi, or "USB" for one only plugged into this specific PC.</p>
+
+    <div style="background:var(--surface2);border:1px solid var(--gold);border-radius:var(--radius2);padding:1rem;margin-bottom:1rem">
+      <label style="font-size:.85rem;color:var(--gold);font-weight:600;display:block;margin-bottom:.4rem">🌐 Print Agent Address</label>
+      <p style="font-size:.72rem;color:var(--text2);margin-bottom:.5rem">Required if this app is opened from a public web link (like the Vercel link) instead of this PC's own address — a public link has no way to reach a printer on your WiFi by itself. Set this to the counter PC's own local WiFi address so print jobs from any device (including ones on the public link) get routed there.</p>
+      <div style="display:flex;gap:.5rem">
+        <input id="ps-agent-url" class="input-field" style="flex:1" placeholder="http://192.168.1.100:4850" value="${printAgentUrl || ''}">
+        <button type="button" class="btn-sm btn-outline" onclick="useThisDeviceAsPrintAgent()">📍 Use This Device</button>
+      </div>
+      <div style="font-size:.68rem;color:var(--text3);margin-top:.3rem">Leave blank only if every device always opens the app directly at this PC's own local address.</div>
+    </div>
 
     <div id="ps-kitchen-block">${renderPrinterBlock('kitchen', '👨‍🍳 Kitchen Printer', status.kitchen)}</div>
     <div id="ps-billing-block" style="margin-top:1rem">${renderPrinterBlock('billing', '🧾 Customer / Billing Printer', status.billing)}</div>
@@ -3469,6 +3497,22 @@ function renderPrinterSettingsModal(status) {
       <button class="btn-primary" onclick="savePrinterSettings()">💾 Save Settings</button>
     </div>
   `;
+}
+
+function useThisDeviceAsPrintAgent() {
+  const host = window.location.hostname;
+  const proto = window.location.protocol;
+  const isLocal = proto.startsWith('http') && (
+    host === 'localhost' || host === '127.0.0.1' ||
+    /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+  );
+  if (!isLocal) {
+    toast('Open the app at this PC\'s own local WiFi address first, then click this button', 'error');
+    return;
+  }
+  const field = document.getElementById('ps-agent-url');
+  if (field) field.value = window.location.origin;
+  toast('Filled in this device\'s local address ✓', 'success');
 }
 
 function renderPrinterBlock(target, label, statusEntry) {
@@ -3558,10 +3602,13 @@ async function testPrinterFromSettings(target) {
   const targetDesc = values.type === 'usb' ? values.printerName : `${values.ip}:${values.port}`;
   if (statusEl) statusEl.innerHTML = `<div style="margin-top:.5rem;font-size:.78rem;color:var(--text2)">⏳ Sending test print to ${targetDesc}...</div>`;
 
-  // Save just this printer's config first so the test actually exercises
-  // the same server-side config the real print jobs will use, then test.
+  // Save this printer's config (and the Print Agent Address, in case it was
+  // just typed but not yet saved) first, so the test actually exercises the
+  // same routing the real print jobs will use, then test.
   const prevConfig = JSON.parse(JSON.stringify(printerConfig));
+  const prevAgentUrl = printAgentUrl;
   printerConfig[target] = values;
+  printAgentUrl = (document.getElementById('ps-agent-url')?.value || '').trim();
   await pushPrinterConfig();
 
   const result = await testPrinterConnection(target);
@@ -3570,6 +3617,7 @@ async function testPrinterFromSettings(target) {
     // Don't leave a broken config saved if the test failed and the admin
     // then cancels instead of fixing it.
     printerConfig = prevConfig;
+    printAgentUrl = prevAgentUrl;
   }
 }
 
@@ -3578,26 +3626,34 @@ async function savePrinterSettings() {
     kitchen: readPrinterFormValues('kitchen'),
     billing: readPrinterFormValues('billing'),
   };
+  printAgentUrl = (document.getElementById('ps-agent-url')?.value || '').trim();
   await pushPrinterConfig();
   closeModal();
   toast('Printer settings saved — all devices will use these printers ✓', 'success');
 }
 
-// Pushes printerConfig through every channel this app already syncs settings
-// through, so it's "central" in the same sense everything else here is:
-// this PC's own print agent (server.js) picks it up immediately from its
-// local SQLite, and every other device pulls it from Supabase on their next
-// sync without ever needing to visit this screen themselves.
+// Pushes printerConfig (and printAgentUrl) through every channel this app
+// already syncs settings through, so it's "central" in the same sense
+// everything else here is: this PC's own print agent (server.js) picks it
+// up immediately from its local SQLite, and every other device — including
+// one loaded from a public URL that could never reach this PC on its own —
+// pulls it from Supabase on their next sync without ever needing to visit
+// this screen themselves.
 async function pushPrinterConfig() {
   try {
-    if (window.api && window.api.saveSettings) await window.api.saveSettings({ printerConfig });
+    if (window.api && window.api.saveSettings) await window.api.saveSettings({ printerConfig, printAgentUrl });
   } catch (e) {}
   try {
-    await apiCall('settings', 'POST', { printerConfig });
+    await apiCall('settings', 'POST', { printerConfig, printAgentUrl });
   } catch (e) {}
   try {
     if (!supabaseClient) initSupabaseFromStorage();
-    if (supabaseClient) await supabaseClient.from('settings').upsert([{ key: 'printerConfig', value: printerConfig }]);
+    if (supabaseClient) {
+      await supabaseClient.from('settings').upsert([
+        { key: 'printerConfig', value: printerConfig },
+        { key: 'printAgentUrl', value: { url: printAgentUrl } },
+      ]);
+    }
   } catch (e) {}
 }
 
@@ -5670,6 +5726,27 @@ async function apiCall(endpoint, method = 'GET', data = null) {
   }
 }
 
+// Print requests specifically can't rely on same-origin: this app might be
+// loaded from a public URL (the Vercel deployment) that has no backend of
+// its own at all, so same-origin would never reach the printers no matter
+// what. If a Print Agent Address is configured (see Printer Settings), every
+// print-related call is sent there directly instead of window.location.origin
+// — that's what lets a device on the Vercel link still print, as long as
+// it's on the same WiFi as the counter PC running that address.
+async function printApiCall(endpoint, method = 'GET', data = null) {
+  const base = (printAgentUrl || '').trim().replace(/\/+$/, '') || getApiBaseUrl();
+  try {
+    const url = `${base}/api/${endpoint}`;
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (data && method !== 'GET') opts.body = JSON.stringify(data);
+    const res = await fetch(url, opts);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+}
+
 async function migrateBrowserLocalStorageToApi() {
   try {
     const isDone = localStorage.getItem('dogar_browser_api_migrated');
@@ -6258,6 +6335,7 @@ async function loadFromLocal() {
           if (settings.supabaseConfig.key) window.SUPABASE_KEY = settings.supabaseConfig.key;
         }
         if (settings && settings.printerConfig) printerConfig = { ...printerConfig, ...settings.printerConfig };
+        if (settings && typeof settings.printAgentUrl === 'string') printAgentUrl = settings.printAgentUrl;
 
         console.log('✅ Loaded data from SQLite database ✓');
         loadedFromCentral = true;
@@ -6292,6 +6370,7 @@ async function loadFromLocal() {
           if (d.settings.supabaseConfig.key) window.SUPABASE_KEY = d.settings.supabaseConfig.key;
         }
         if (d.settings && d.settings.printerConfig) printerConfig = { ...printerConfig, ...d.settings.printerConfig };
+        if (d.settings && typeof d.settings.printAgentUrl === 'string') printAgentUrl = d.settings.printAgentUrl;
 
         console.log('✅ Loaded data from Central Backend Database ✓');
         loadedFromCentral = true;
@@ -6515,6 +6594,12 @@ async function loadFromLocal() {
             // not from Supabase — when actually routing a print job.
             if (window.api && window.api.saveSettings) window.api.saveSettings({ printerConfig }).catch(() => {});
             apiCall('settings', 'POST', { printerConfig }).catch(() => {});
+          }
+          const agentSetting = cloudSettings.find(s => s.key === 'printAgentUrl');
+          if (agentSetting && typeof agentSetting.value === 'string') {
+            printAgentUrl = agentSetting.value;
+          } else if (agentSetting && agentSetting.value && typeof agentSetting.value.url === 'string') {
+            printAgentUrl = agentSetting.value.url;
           }
         }
 
