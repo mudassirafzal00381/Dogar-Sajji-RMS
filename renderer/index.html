@@ -6936,10 +6936,35 @@ async function migrateLocalStorageIfNeeded(){
   return;
 }
 
+// Reconciles the shared Print Agent Address with what THIS PC just detected
+// as its own current LAN IP (see main.js's detectAndSaveLanAddress(), which
+// runs on every Electron app startup and saves it straight to this PC's own
+// local database). Only a genuine local desktop install can legitimately
+// know "this is my current address" — a browser-only client never runs
+// this path — so this is what lets the address self-heal after a DHCP
+// lease change instead of silently going stale until printing breaks and
+// someone has to manually re-run ipconfig and retype it.
+async function syncPrintAgentUrlIfChanged() {
+  if (!window.api || !window.api.getSettings) return;
+  try {
+    const localSettings = await window.api.getSettings();
+    const localUrl = (localSettings && localSettings.printAgentUrl) || '';
+    if (!localUrl || localUrl === printAgentUrl) return;
+    printAgentUrl = localUrl;
+    await pushPrinterConfig();
+    console.log(`🌐 Print agent address self-corrected to ${localUrl}`);
+  } catch (e) {
+    console.warn('Print agent address sync warning:', e);
+  }
+}
+
 // Boot initialization: load users & show Sign-In screen
 document.addEventListener('DOMContentLoaded', async () => {
   if (typeof loadFromLocal === 'function') {
     await loadFromLocal().catch(e => console.warn('Boot load error:', e));
+  }
+  if (typeof syncPrintAgentUrlIfChanged === 'function') {
+    syncPrintAgentUrlIfChanged().catch(e => console.warn('Print agent sync error:', e));
   }
   if (typeof loadAppUsers === 'function') {
     await loadAppUsers().catch(e => console.warn('Load users error:', e));
