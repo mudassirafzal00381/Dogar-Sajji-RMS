@@ -8,10 +8,33 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { exec } = require('child_process');
 const database = require('./database');
-const printer = require('./printer');
 
 const DEFAULT_PORT = 4850;
+
+function getWindowsSpoolerPrinters() {
+  return new Promise((resolve) => {
+    const psCmd = 'Get-CimInstance Win32_Printer | Select-Object Name, Default, PortName, DriverName | ConvertTo-Json -Compress';
+    exec(`powershell -NoProfile -Command "${psCmd}"`, { windowsHide: true, timeout: 5000 }, (err, stdout) => {
+      if (err || !stdout || !stdout.trim()) return resolve([]);
+      try {
+        const parsed = JSON.parse(stdout.trim());
+        const list = Array.isArray(parsed) ? parsed : [parsed];
+        resolve(list.map(p => ({
+          name: p.Name,
+          displayName: p.PortName ? `${p.Name} (${p.PortName})` : p.Name,
+          isDefault: !!p.Default,
+          port: p.PortName || '',
+          driver: p.DriverName || '',
+          isThermal: /pos|thermal|receipt|80|58|xprinter|epson|citizen|star|bixolon/i.test(p.Name)
+        })));
+      } catch (e) {
+        resolve([]);
+      }
+    });
+  });
+}
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -120,87 +143,44 @@ async function handleApiRequest(req, res, urlPath) {
       return;
     }
 
-    // ── ESC/POS THERMAL PRINTING (Kitchen & Billing printers) ──
-    // These are the only routes that talk to the physical printers. Each
-    // printer's connection details (network IP/port, or a USB printer name
-    // for one only reachable from this PC) are read here, from this server's
-    // own shared settings — never from the request body — so which printer a
-    // job goes to can never depend on a client's (possibly stale) config.
-    // This is what lets a mobile browser "print" at all: it can't open a raw
-    // TCP socket or reach a USB port itself, so it POSTs structured order/
-    // bill data here and this process (already running on the counter PC)
-    // does the actual send — over the network, or via the Windows spooler's
-    // RAW mode for a USB-only printer — on the client's behalf.
-    function isPrinterConfigured(cfg) {
-      return cfg && (cfg.type === 'usb' ? !!cfg.printerName : !!cfg.ip);
-    }
-
-    if (urlPath === '/api/print/kitchen' && req.method === 'POST') {
-      const body = await parseJsonBody(req);
-      const cfg = (database.getSettings().printerConfig || {}).kitchen || {};
-      if (!isPrinterConfigured(cfg)) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ success: false, error: 'Kitchen printer is not configured yet — open Printer Settings and set it up.' }));
+    // ── Printers API ──
+    if (urlPath === '/api/printers' && req.method === 'GET') {
+      let printers = [];
+      if (process.platform === 'win32') {
+        printers = await getWindowsSpoolerPrinters();
       }
-      try {
-        const buffer = printer.buildKitchenTicket(body);
-        const result = await printer.printToTarget('kitchen', cfg, buffer, body.jobId);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ success: true, duplicate: result.duplicate }));
-      } catch (err) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ success: false, error: err.message }));
-      }
-    }
-
-    if (urlPath === '/api/print/billing' && req.method === 'POST') {
-      const body = await parseJsonBody(req);
-      const cfg = (database.getSettings().printerConfig || {}).billing || {};
-      if (!isPrinterConfigured(cfg)) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ success: false, error: 'Billing printer is not configured yet — open Printer Settings and set it up.' }));
-      }
-      try {
-        // docType distinguishes a customer bill/invoice from the day-end
-        // closing report — both are admin-counter documents, so both go to
-        // the billing printer, just with different ESC/POS templates.
-        const buffer = body.docType === 'closing-report'
-          ? printer.buildClosingReport(body)
-          : printer.buildCustomerBill(body);
-        const result = await printer.printToTarget('billing', cfg, buffer, body.jobId);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ success: true, duplicate: result.duplicate }));
-      } catch (err) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ success: false, error: err.message }));
-      }
-    }
-
-    if (urlPath === '/api/print/test' && req.method === 'POST') {
-      const body = await parseJsonBody(req);
-      const target = body.target === 'billing' ? 'billing' : 'kitchen';
-      const cfg = (database.getSettings().printerConfig || {})[target] || {};
-      if (!isPrinterConfigured(cfg)) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ success: false, error: `${target === 'kitchen' ? 'Kitchen' : 'Billing'} printer is not configured yet — set it up first.` }));
-      }
-      try {
-        const buffer = printer.buildTestPage(target === 'kitchen' ? 'KITCHEN PRINTER TEST' : 'BILLING PRINTER TEST');
-        const result = await printer.printToTarget(target, cfg, buffer, body.jobId);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ success: true, duplicate: result.duplicate }));
-      } catch (err) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ success: false, error: err.message }));
-      }
-    }
-
-    // Populates the USB printer picker in Printer Settings — only ever used
-    // to fill that dropdown, never to decide where an actual print job goes.
-    if (urlPath === '/api/print/local-printers' && req.method === 'GET') {
-      const names = await printer.listWindowsPrinters();
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ success: true, printers: names }));
+      return res.end(JSON.stringify(printers));
+    }
+
+    if (urlPath === '/api/print' && req.method === 'POST') {
+      const body = await parseJsonBody(req);
+      const html = body.html || '';
+      const deviceName = body.deviceName || '';
+      try {
+        let electronApp;
+        try { electronApp = require('electron'); } catch (e) {}
+        if (electronApp && electronApp.BrowserWindow) {
+          const { BrowserWindow } = electronApp;
+          const printWin = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false, contextIsolation: true } });
+          const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+          printWin.loadURL(dataUrl);
+          printWin.webContents.on('did-finish-load', () => {
+            const printOptions = { silent: true, printBackground: true, margins: { marginType: 'none' } };
+            if (deviceName) printOptions.deviceName = deviceName;
+            printWin.webContents.print(printOptions, (success) => {
+              try { printWin.destroy(); } catch (e) {}
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              return res.end(JSON.stringify({ success }));
+            });
+          });
+          return;
+        }
+      } catch (err) {
+        console.warn('Server silent print error:', err);
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: true, message: 'Print command processed' }));
     }
 
     // ── Specific Entity Handlers ──

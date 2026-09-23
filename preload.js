@@ -55,5 +55,7 @@ contextBridge.exposeInMainWorld('api', {
 
   backupDatabase: () => ipcRenderer.invoke('db:backup'),
   saveCSV: (options) => ipcRenderer.invoke('file:saveCSV', options),
+  getPrinters: () => ipcRenderer.invoke('print:getPrinters'),
+  printReceipt: (html, options) => ipcRenderer.invoke('print:receipt', html, options),
 });
 
