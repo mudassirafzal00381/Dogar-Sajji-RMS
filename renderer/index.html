@@ -5818,15 +5818,22 @@ async function validateSupabaseConnection() {
   }
 }
 
+const OFFICIAL_SUPABASE_URL = "https://obeaiypgrowizbvbzgcr.supabase.co";
+const OFFICIAL_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9iZWFpeXBncm93aXpidmJ6Z2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk4NzI4NzMsImV4cCI6MjEwNTQ0ODg3M30.jE_GddYkjriudinavDCImkSHbBFuXG9eQhCBfUq96IM";
+
 function initSupabaseFromStorage() {
-  let rawUrl = localStorage.getItem('dogar_supabase_url') || window.SUPABASE_URL || '';
-  let key = localStorage.getItem('dogar_supabase_key') || window.SUPABASE_KEY || '';
-  if (key && (key.startsWith('sb_publishable_') || !key.startsWith('eyJ'))) {
-    if (window.SUPABASE_KEY && window.SUPABASE_KEY.startsWith('eyJ')) {
-      localStorage.removeItem('dogar_supabase_key');
-      key = window.SUPABASE_KEY;
-    }
+  let rawUrl = localStorage.getItem('dogar_supabase_url') || window.SUPABASE_URL || OFFICIAL_SUPABASE_URL;
+  let key = localStorage.getItem('dogar_supabase_key') || window.SUPABASE_KEY || OFFICIAL_SUPABASE_KEY;
+
+  if (!key || key.startsWith('sb_publishable_') || !key.startsWith('eyJ') || key.length < 50) {
+    rawUrl = OFFICIAL_SUPABASE_URL;
+    key = OFFICIAL_SUPABASE_KEY;
+    try {
+      localStorage.setItem('dogar_supabase_url', rawUrl);
+      localStorage.setItem('dogar_supabase_key', key);
+    } catch(e){}
   }
+
   const url = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
   const supaLib = window.supabase || (typeof supabase !== 'undefined' ? supabase : null);
   if (supaLib && url && key && url.includes('supabase.co')) {
