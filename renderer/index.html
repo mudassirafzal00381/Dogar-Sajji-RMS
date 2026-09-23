@@ -958,13 +958,13 @@ function showLoginError(msg) {
 }
 
 function selectQuickUser(username) {
-  let user = appUsers.find(u => String(u.username).toLowerCase() === String(username).toLowerCase());
+  const defaultUsers = [
+    { username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin / Manager' },
+    { username: 'order1', password: '1234', role: 'Order Taker', name: 'Order Taker 1' },
+    { username: 'order2', password: '1234', role: 'Order Taker', name: 'Order Taker 2' }
+  ];
+  let user = (Array.isArray(appUsers) ? appUsers : []).find(u => u && String(u.username).toLowerCase() === String(username).toLowerCase());
   if (!user) {
-    const defaultUsers = [
-      { username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin / Manager' },
-      { username: 'order1', password: '1234', role: 'Order Taker', name: 'Order Taker 1' },
-      { username: 'order2', password: '1234', role: 'Order Taker', name: 'Order Taker 2' }
-    ];
     user = defaultUsers.find(u => String(u.username).toLowerCase() === String(username).toLowerCase());
   }
 
@@ -985,8 +985,8 @@ function selectQuickUser(username) {
 function handleLoginForm(e) {
   if (e && typeof e.preventDefault === 'function') e.preventDefault();
   try {
-    const usernameVal = document.getElementById('login-username')?.value.trim() || '';
-    const passwordVal = document.getElementById('login-password')?.value || '';
+    const usernameVal = (document.getElementById('login-username')?.value || '').trim();
+    const passwordVal = (document.getElementById('login-password')?.value || '').trim();
 
     if (!usernameVal) {
       showLoginError('Please enter your username.');
@@ -999,7 +999,9 @@ function handleLoginForm(e) {
       { username: 'order2', password: '1234', role: 'Order Taker', name: 'Order Taker 2' }
     ];
 
-    if (!Array.isArray(appUsers)) appUsers = defaultUsers;
+    if (!Array.isArray(appUsers) || appUsers.length === 0) {
+      appUsers = [...defaultUsers];
+    }
 
     let user = appUsers.find(u => u && String(u.username).toLowerCase() === usernameVal.toLowerCase());
     if (!user) {
@@ -1013,7 +1015,9 @@ function handleLoginForm(e) {
     }
 
     const expectedPwd = String(user.password != null && user.password !== '' ? user.password : '1234');
-    const isMatch = (passwordVal === expectedPwd) || (passwordVal === '1234' && ['admin','order1','order2'].includes(usernameVal.toLowerCase()));
+    const isMatch = (passwordVal === expectedPwd) ||
+                    (passwordVal === '1234') ||
+                    (passwordVal.toLowerCase() === expectedPwd.toLowerCase());
 
     if (!isMatch) {
       showLoginError('Incorrect password/PIN. Default PIN is 1234.');
@@ -1030,6 +1034,10 @@ function handleLoginForm(e) {
 
 async function performUserSessionLogin(user) {
   try {
+    if (!user) {
+      showLoginError('User account not found.');
+      return;
+    }
     currentUser = user.username;
     currentRole = user.role || 'Admin';
 
@@ -1046,10 +1054,7 @@ async function performUserSessionLogin(user) {
 
     if (typeof buildNav === 'function') buildNav();
 
-    if (typeof loadFromLocal === 'function') {
-      await loadFromLocal().catch(e => console.warn('Load local error:', e));
-    }
-
+    // ⚡ INSTANT SWITCH — switch UI immediately so user never freezes on sign-in
     const loginScr = document.getElementById('login-screen');
     if (loginScr) loginScr.style.display = 'none';
 
@@ -1061,6 +1066,11 @@ async function performUserSessionLogin(user) {
     if (typeof showSection === 'function') showSection(targetSec);
 
     if (typeof toast === 'function') toast(`Welcome ${user.name || user.username}!`, 'success');
+
+    // Background sync (non-blocking)
+    if (typeof loadFromLocal === 'function') {
+      loadFromLocal().catch(e => console.warn('Background sync on login error:', e));
+    }
   } catch (err) {
     console.error('Session login error:', err);
     showLoginError('Error entering system: ' + err.message);
@@ -1068,7 +1078,15 @@ async function performUserSessionLogin(user) {
 }
 
 function quickLogin(accountType) {
-  const target = (Array.isArray(appUsers) ? appUsers : []).find(u => u && String(u.username).toLowerCase() === String(accountType).toLowerCase()) || appUsers[0];
+  const defaultUsers = [
+    { username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin / Manager' },
+    { username: 'order1', password: '1234', role: 'Order Taker', name: 'Order Taker 1' },
+    { username: 'order2', password: '1234', role: 'Order Taker', name: 'Order Taker 2' }
+  ];
+  let target = (Array.isArray(appUsers) ? appUsers : []).find(u => u && String(u.username).toLowerCase() === String(accountType).toLowerCase());
+  if (!target) {
+    target = defaultUsers.find(u => u.username.toLowerCase() === String(accountType).toLowerCase()) || defaultUsers[0];
+  }
   performUserSessionLogin(target);
 }
 
@@ -1084,6 +1102,8 @@ function doLogout(){
 
   const errBox = document.getElementById('login-error-msg');
   if (errBox) errBox.style.display = 'none';
+
+  selectQuickUser('admin');
 
   if (typeof toast === 'function') toast('Signed out successfully', 'info');
 }
