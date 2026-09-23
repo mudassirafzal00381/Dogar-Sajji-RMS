@@ -1,10 +1,8 @@
 // ══════════════════════════════════════════════════════════════════════════════
 // ⚡ DOGAR SAJJI — SUPABASE CLOUD DATABASE CONFIGURATION
 // ══════════════════════════════════════════════════════════════════════════════
-// To synchronize data live across ALL PC & Mobile devices:
-// 1. Create a free project at https://supabase.com
-// 2. Paste the SQL code from `supabase_schema.sql` in Supabase SQL Editor and click RUN
-// 3. Paste your Supabase Project URL and Anon API Key below (or configure via POS app "☁️ Cloud Sync" button):
+// Automatically synchronized live across all PC, Web (Vercel), & Mobile terminals.
 
-window.SUPABASE_URL = localStorage.getItem('dogar_supabase_url') || "https://obeaiypgrowizbvbzgcr.supabase.co";
-window.SUPABASE_KEY = localStorage.getItem('dogar_supabase_key') || "sb_publishable_14-7OBHbQB-jv6JUBEoWQQ__c9zNMEs";
+window.SUPABASE_URL = (typeof localStorage !== 'undefined' && localStorage.getItem('dogar_supabase_url')) || "https://obeaiypgrowizbvbzgcr.supabase.co";
+window.SUPABASE_KEY = (typeof localStorage !== 'undefined' && localStorage.getItem('dogar_supabase_key')) || "sb_publishable_14-7OBHbQB-jv6JUBEoWQQ__c9zNMEs";
+
