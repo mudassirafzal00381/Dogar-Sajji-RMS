@@ -2208,40 +2208,61 @@ function renderManager(){
     <p style="color:var(--text3);font-size:.88rem;margin-bottom:1rem">All orders have been completed or there are no pending orders.</p>
     <button class="btn-primary" onclick="goToNewOrder()">Take New Order</button>
   </div>` : `
-  <div class="orders-grid">
-    ${activeOrders.map(o => {
-      const type = o.orderType || 'Dine-in';
-      const typeIcon = type === 'Dine-in' ? '🪑' : type === 'Takeaway' ? '🥡' : '🛵';
-      const typeBg = type === 'Dine-in' ? 'rgba(201,168,76,.18)' : type === 'Takeaway' ? 'rgba(16,185,129,.18)' : 'rgba(59,130,246,.18)';
-      const typeColor = type === 'Dine-in' ? 'var(--gold)' : type === 'Takeaway' ? 'var(--green)' : 'var(--blue)';
-      return `
-      <div class="order-card">
-        <div class="order-header" style="display:flex;justify-content:space-between;align-items:center">
-          <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
-            <span class="order-table" style="font-weight:700;color:var(--gold)">${orderLabel(o)}</span>
-            <span style="background:${typeBg};color:${typeColor};font-size:.72rem;font-weight:700;padding:.15rem .5rem;border-radius:6px;display:inline-flex;align-items:center;gap:.25rem;border:1px solid ${typeColor}">
-              ${typeIcon} ${type}
-            </span>
-          </div>
-          <span class="status-badge status-${o.status}">${o.status}</span>
-        </div>
-        <div class="order-items">
-          ${type==='Delivery'?`<div style="font-size:.78rem;color:var(--gold);margin-bottom:.4rem;padding-bottom:.3rem;border-bottom:1px dashed var(--border);font-weight:600">📞 ${o.customerPhone||'—'}${o.customerAddress?' · '+o.customerAddress:''}</div>`:''}
-          ${o.items.map(i => `<div class="order-item-row" style="flex-direction:column;align-items:flex-start"><div style="display:flex;justify-content:space-between;width:100%"><strong>${i.qty}× ${i.name}</strong><span>Rs ${(i.qty * i.price).toLocaleString()}</span></div>${i.desc ? `<div style="font-size:.75rem;color:var(--gold);margin-left:.75rem;margin-top:.1rem">↳ ${i.desc}</div>` : ''}</div>`).join('')}
-          ${o.note ? `<div class="order-note">📝 ${o.note}</div>` : ''}
-          <div style="font-size:.75rem;color:var(--text3);margin-top:.4rem">⏱ ${o.time} · Staff: ${o.waiter || 'Counter'}</div>
-        </div>
-        <div class="order-footer">
-          ${o.status === 'pending'
-            ? `<button class="btn-sm btn-green" onclick="updateOrder('${o.id}','confirmed')">✓ Accept</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">Cancel Order</button>`
-            : `<button class="btn-sm btn-green" style="font-weight:700" onclick="payOrder('${o.id}')">⚡ Pay & Bill</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">Cancel Order</button>`
-          }
-          <button class="btn-sm btn-blue" onclick="editOrder('${o.id}')">Edit</button>
-        </div>
-      </div>`;
-    }).join('')}
-  </div>`}
+  ${renderOrderTypeGroup('Dine-in', '🪑', 'var(--gold)', activeOrders.filter(o => (o.orderType || 'Dine-in') === 'Dine-in'))}
+  ${renderOrderTypeGroup('Takeaway', '🥡', 'var(--green)', activeOrders.filter(o => o.orderType === 'Takeaway'))}
+  ${renderOrderTypeGroup('Delivery', '🛵', 'var(--blue)', activeOrders.filter(o => o.orderType === 'Delivery'))}
+  `}
   `;
+}
+
+// Live Orders Queue is split into its own Dine-in / Takeaway / Delivery groups
+// (rather than one mixed stack) so staff can jump straight to the queue they
+// need instead of scanning past every other order type first.
+function renderOrderTypeGroup(type, icon, color, list){
+  if (list.length === 0) return '';
+  return `
+  <div style="margin-bottom:1.5rem">
+    <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.65rem;padding-bottom:.4rem;border-bottom:1px solid ${color}">
+      <span style="font-size:1.1rem">${icon}</span>
+      <span style="font-weight:700;color:${color};font-size:.95rem">${type}</span>
+      <span style="background:${color};color:var(--dark);font-size:.72rem;font-weight:800;padding:.1rem .55rem;border-radius:10px">${list.length}</span>
+    </div>
+    <div class="orders-grid">
+      ${list.map(o => renderOrderCard(o)).join('')}
+    </div>
+  </div>`;
+}
+
+function renderOrderCard(o){
+  const type = o.orderType || 'Dine-in';
+  const typeIcon = type === 'Dine-in' ? '🪑' : type === 'Takeaway' ? '🥡' : '🛵';
+  const typeBg = type === 'Dine-in' ? 'rgba(201,168,76,.18)' : type === 'Takeaway' ? 'rgba(16,185,129,.18)' : 'rgba(59,130,246,.18)';
+  const typeColor = type === 'Dine-in' ? 'var(--gold)' : type === 'Takeaway' ? 'var(--green)' : 'var(--blue)';
+  return `
+  <div class="order-card">
+    <div class="order-header" style="display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
+        <span class="order-table" style="font-weight:700;color:var(--gold)">${orderLabel(o)}</span>
+        <span style="background:${typeBg};color:${typeColor};font-size:.72rem;font-weight:700;padding:.15rem .5rem;border-radius:6px;display:inline-flex;align-items:center;gap:.25rem;border:1px solid ${typeColor}">
+          ${typeIcon} ${type}
+        </span>
+      </div>
+      <span class="status-badge status-${o.status}">${o.status}</span>
+    </div>
+    <div class="order-items">
+      ${type==='Delivery'?`<div style="font-size:.78rem;color:var(--gold);margin-bottom:.4rem;padding-bottom:.3rem;border-bottom:1px dashed var(--border);font-weight:600">📞 ${o.customerPhone||'—'}${o.customerAddress?' · '+o.customerAddress:''}</div>`:''}
+      ${o.items.map(i => `<div class="order-item-row" style="flex-direction:column;align-items:flex-start"><div style="display:flex;justify-content:space-between;width:100%"><strong>${i.qty}× ${i.name}</strong><span>Rs ${(i.qty * i.price).toLocaleString()}</span></div>${i.desc ? `<div style="font-size:.75rem;color:var(--gold);margin-left:.75rem;margin-top:.1rem">↳ ${i.desc}</div>` : ''}</div>`).join('')}
+      ${o.note ? `<div class="order-note">📝 ${o.note}</div>` : ''}
+      <div style="font-size:.75rem;color:var(--text3);margin-top:.4rem">⏱ ${o.time} · Staff: ${o.waiter || 'Counter'}</div>
+    </div>
+    <div class="order-footer">
+      ${o.status === 'pending'
+        ? `<button class="btn-sm btn-green" onclick="updateOrder('${o.id}','confirmed')">✓ Accept</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">Cancel Order</button>`
+        : `<button class="btn-sm btn-green" style="font-weight:700" onclick="payOrder('${o.id}')">⚡ Pay & Bill</button><button class="btn-sm btn-red" onclick="openRejectOrderModal('${o.id}')">Cancel Order</button>`
+      }
+      <button class="btn-sm btn-blue" onclick="editOrder('${o.id}')">Edit</button>
+    </div>
+  </div>`;
 }
 
 function openRejectOrderModal(id) {
