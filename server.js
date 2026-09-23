@@ -8,34 +8,10 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
 const database = require('./database');
 const printer = require('./printer');
 
 const DEFAULT_PORT = 4850;
-
-function getWindowsSpoolerPrinters() {
-  return new Promise((resolve) => {
-    const psCmd = 'Get-CimInstance Win32_Printer | Select-Object Name, Default, PortName, DriverName | ConvertTo-Json -Compress';
-    exec(`powershell -NoProfile -Command "${psCmd}"`, { windowsHide: true, timeout: 5000 }, (err, stdout) => {
-      if (err || !stdout || !stdout.trim()) return resolve([]);
-      try {
-        const parsed = JSON.parse(stdout.trim());
-        const list = Array.isArray(parsed) ? parsed : [parsed];
-        resolve(list.map(p => ({
-          name: p.Name,
-          displayName: p.PortName ? `${p.Name} (${p.PortName})` : p.Name,
-          isDefault: !!p.Default,
-          port: p.PortName || '',
-          driver: p.DriverName || '',
-          isThermal: /pos|thermal|receipt|80|58|xprinter|epson|citizen|star|bixolon/i.test(p.Name)
-        })));
-      } catch (e) {
-        resolve([]);
-      }
-    });
-  });
-}
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -144,46 +120,6 @@ async function handleApiRequest(req, res, urlPath) {
       return;
     }
 
-    // ── Printers API ──
-    if (urlPath === '/api/printers' && req.method === 'GET') {
-      let printers = [];
-      if (process.platform === 'win32') {
-        printers = await getWindowsSpoolerPrinters();
-      }
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify(printers));
-    }
-
-    if (urlPath === '/api/print' && req.method === 'POST') {
-      const body = await parseJsonBody(req);
-      const html = body.html || '';
-      const deviceName = body.deviceName || '';
-      try {
-        let electronApp;
-        try { electronApp = require('electron'); } catch (e) {}
-        if (electronApp && electronApp.BrowserWindow) {
-          const { BrowserWindow } = electronApp;
-          const printWin = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false, contextIsolation: true } });
-          const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
-          printWin.loadURL(dataUrl);
-          printWin.webContents.on('did-finish-load', () => {
-            const printOptions = { silent: true, printBackground: true, margins: { marginType: 'none' } };
-            if (deviceName) printOptions.deviceName = deviceName;
-            printWin.webContents.print(printOptions, (success) => {
-              try { printWin.destroy(); } catch (e) {}
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              return res.end(JSON.stringify({ success }));
-            });
-          });
-          return;
-        }
-      } catch (err) {
-        console.warn('Server silent print error:', err);
-      }
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ success: true, message: 'Print command processed' }));
-    }
-
     // ── ESC/POS NETWORK THERMAL PRINTING (Kitchen & Billing printers) ──
     // These are the only two routes that talk to the physical WiFi POS-80
     // printers. The printer's IP/port is read here, from this server's own
@@ -219,7 +155,12 @@ async function handleApiRequest(req, res, urlPath) {
         return res.end(JSON.stringify({ success: false, error: 'Billing printer is not configured yet — open Printer Settings and set its IP address.' }));
       }
       try {
-        const buffer = printer.buildCustomerBill(body);
+        // docType distinguishes a customer bill/invoice from the day-end
+        // closing report — both are admin-counter documents, so both go to
+        // the billing printer, just with different ESC/POS templates.
+        const buffer = body.docType === 'closing-report'
+          ? printer.buildClosingReport(body)
+          : printer.buildCustomerBill(body);
         const result = await printer.printToTarget('billing', cfg.ip, cfg.port, buffer, body.jobId);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ success: true, duplicate: result.duplicate }));

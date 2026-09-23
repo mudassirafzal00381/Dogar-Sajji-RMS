@@ -205,6 +205,65 @@ function buildCustomerBill(payload) {
   return Buffer.from(out, 'latin1');
 }
 
+// ── Day-end closing report: an admin/owner financial summary, printed live
+// at close-of-day or reprinted later from history. Not a customer bill, but
+// shares the billing printer since it's an admin-counter document. ──
+function buildClosingReport(payload) {
+  const {
+    date, time, closedBy, totalSales, salesCount, totalExpenses, totalProfit,
+    marginPct, cancelledCount, totalCancelledCost, reprinted
+  } = payload || {};
+
+  let out = '';
+  out += CMD.INIT;
+  out += CMD.CENTER + CMD.BOLD_ON + CMD.DOUBLE_ON;
+  out += 'Dogar Sajji & Restaurant\n';
+  out += CMD.DOUBLE_OFF + CMD.BOLD_OFF;
+  out += 'Govt Graduate College, Multan Road, Muzaffargarh\n';
+  out += 'Ph: 0300-1863406\n';
+  out += hr('=');
+  out += CMD.BOLD_ON;
+  out += '*** END OF DAY SALES REPORT ***\n';
+  out += (reprinted ? '[ REPRINTED OWNER RECEIPT ]' : '[ RECEIPT GIVEN TO OWNER ]') + '\n';
+  out += CMD.BOLD_OFF;
+  out += hr('-');
+  out += CMD.LEFT;
+  out += padRow('Date:', date || '') + '\n';
+  out += padRow('Time:', time || '') + '\n';
+  out += padRow('Closed By:', asciiSafe(closedBy || 'Admin')) + '\n';
+  out += CMD.BOLD_ON + padRow('Day Status:', '1 DAY CLOSED') + '\n' + CMD.BOLD_OFF;
+  out += hr('=');
+
+  out += CMD.BOLD_ON + "TODAY'S FINANCIAL SUMMARY\n" + CMD.BOLD_OFF;
+  out += hr('-');
+  out += CMD.BOLD_ON + padRow('TOTAL SALES:', money(totalSales)) + '\n' + CMD.BOLD_OFF;
+  out += padRow('Orders Settled:', `${salesCount || 0}`) + '\n';
+  out += hr('-');
+  out += CMD.BOLD_ON + padRow('TOTAL EXPENSE:', money(totalExpenses)) + '\n' + CMD.BOLD_OFF;
+  out += '(Operating + Petty Cash)\n';
+  out += hr('-');
+  out += CMD.BOLD_ON + CMD.DOUBLE_ON + padRow('TOTAL PROFIT:', money(totalProfit)) + '\n' + CMD.DOUBLE_OFF + CMD.BOLD_OFF;
+  out += padRow('Net Profit Margin:', `${marginPct || 0}%`) + '\n';
+  out += hr('=');
+
+  out += CMD.BOLD_ON + 'CANCELLED ORDERS SUMMARY\n' + CMD.BOLD_OFF;
+  out += hr('-');
+  out += padRow('Cancelled Orders:', `${cancelledCount || 0}`) + '\n';
+  out += CMD.BOLD_ON + padRow('Cancelled Cost:', money(totalCancelledCost)) + '\n' + CMD.BOLD_OFF;
+  out += hr('=');
+
+  out += '\nAdmin Signature: ____________\n';
+  out += '\nOwner Signature: ____________\n';
+  out += hr('-');
+  out += CMD.CENTER;
+  out += 'Developer Contact: 03255775600\n';
+  out += 'Dogar Sajji & Restaurant POS System\n';
+  out += 'Day Closeout\n\n\n\n';
+  out += CMD.CUT;
+
+  return Buffer.from(out, 'latin1');
+}
+
 function buildTestPage(label) {
   const now = new Date().toLocaleString('en-PK');
   let out = '';
@@ -224,6 +283,11 @@ function buildTestPage(label) {
 }
 
 // ── Raw TCP sender — the actual network hop to the physical printer ──
+// Closes gracefully (socket.end(), a real FIN once the write buffer is
+// flushed) rather than abruptly destroying the connection — an abrupt
+// destroy() can fire an ECONNRESET on the remote side instead of a clean
+// close, which some print servers/relays log as a failed job even though
+// every byte was actually delivered.
 function sendRaw(ip, port, buffer, timeoutMs) {
   timeoutMs = timeoutMs || 6000;
   return new Promise((resolve, reject) => {
@@ -240,10 +304,11 @@ function sendRaw(ip, port, buffer, timeoutMs) {
     socket.setTimeout(timeoutMs);
     socket.once('timeout', () => finish(new Error(`Printer at ${ip}:${p} timed out — check it is powered on and connected to WiFi`)));
     socket.once('error', (e) => finish(new Error(`Could not reach printer at ${ip}:${p} (${(e && e.code) || (e && e.message) || 'connection error'})`)));
+    socket.once('close', () => finish());
     socket.connect(p, ip, () => {
       socket.write(buffer, (err) => {
         if (err) return finish(err);
-        setTimeout(() => finish(), 250); // let the printer flush before closing
+        socket.end();
       });
     });
   });
@@ -313,6 +378,7 @@ async function printToTarget(target, ip, port, buffer, jobId) {
 module.exports = {
   buildKitchenTicket,
   buildCustomerBill,
+  buildClosingReport,
   buildTestPage,
   sendRaw,
   printToTarget,
