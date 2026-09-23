@@ -2953,16 +2953,36 @@ function printKitchenTicket(id){
 // ── BILLING STATE & UX HELPERS ──
 const billingState = {
   paymentMethod: 'Cash',
-  discountPct: 0,
+  discountType: 'pct', // 'pct' (%) or 'flat' (Rs) — see computeDiscount()
+  discountValue: 0,
   deliveryCharge: 0,
   perHeadRate: 0,
   perHeadPersons: 1,
   cashReceived: ''
 };
 
+// Discount can be entered as a % of the subtotal or as a flat Rs amount.
+// Whichever mode is used, this returns the actual Rs amount to subtract
+// (clamped so it can never exceed the subtotal) plus the equivalent % —
+// the equivalent % is what gets persisted to salesLedger.discount so
+// existing reports/CSV exports (which are labeled "Discount %") keep
+// meaning the same thing regardless of how the discount was entered.
+function computeDiscount(sub, rawValue, type) {
+  const val = Math.max(0, Number(rawValue) || 0);
+  sub = Math.max(0, Number(sub) || 0);
+  if (type === 'flat') {
+    const amt = Math.min(val, sub);
+    const pct = sub > 0 ? Math.round((amt / sub) * 10000) / 100 : 0;
+    return { amt: Math.round(amt), pct, label: `Rs ${Math.round(amt).toLocaleString()}` };
+  }
+  const pct = Math.min(val, 100);
+  const amt = Math.round(sub * pct / 100);
+  return { amt, pct, label: `${pct}%` };
+}
+
 function syncBillingStateFromUI() {
-  const d = document.getElementById('discount-pct');
-  if (d) billingState.discountPct = parseFloat(d.value) || 0;
+  const d = document.getElementById('discount-value');
+  if (d) billingState.discountValue = parseFloat(d.value) || 0;
   const del = document.getElementById('delivery-charge');
   if (del) billingState.deliveryCharge = parseFloat(del.value) || 0;
   const phr = document.getElementById('per-head-rate');
@@ -2975,11 +2995,43 @@ function syncBillingStateFromUI() {
 
 function resetBillingState() {
   billingState.paymentMethod = 'Cash';
-  billingState.discountPct = 0;
+  billingState.discountType = 'pct';
+  billingState.discountValue = 0;
   billingState.deliveryCharge = 0;
   billingState.perHeadRate = 0;
   billingState.perHeadPersons = 1;
   billingState.cashReceived = '';
+}
+
+// Switches the discount entry mode and swaps the input/presets in place
+// (rather than re-rendering the whole Billing section, which would lose
+// focus / in-progress values in the other fields).
+function setDiscountType(type) {
+  billingState.discountType = type === 'flat' ? 'flat' : 'pct';
+  billingState.discountValue = 0;
+  const container = document.getElementById('discount-block');
+  if (container) container.innerHTML = renderDiscountBlock();
+  updateLiveBill();
+}
+
+function renderDiscountBlock() {
+  const isPct = (billingState.discountType || 'pct') !== 'flat';
+  const presets = isPct ? [0, 5, 10, 15, 20] : [0, 50, 100, 200, 500];
+  return `
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.4rem">
+    <label style="font-size:.75rem; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; font-weight:600">
+      🏷️ Discount
+    </label>
+    <div style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+      <button type="button" class="btn-xs" style="padding:.2rem .6rem; font-size:.72rem; border:none; cursor:pointer; font-weight:700; background:${isPct ? 'var(--gold)' : 'var(--surface2)'}; color:${isPct ? 'var(--dark)' : 'var(--text2)'}" onclick="setDiscountType('pct')">%</button>
+      <button type="button" class="btn-xs" style="padding:.2rem .6rem; font-size:.72rem; border:none; cursor:pointer; font-weight:700; background:${!isPct ? 'var(--gold)' : 'var(--surface2)'}; color:${!isPct ? 'var(--dark)' : 'var(--text2)'}" onclick="setDiscountType('flat')">Rs</button>
+    </div>
+  </div>
+  <div style="display:flex; gap:.25rem; margin-bottom:.4rem; flex-wrap:wrap">
+    ${presets.map(v => `<button type="button" class="btn-xs" style="background:var(--surface2); border:1px solid var(--border); color:var(--text2); font-size:.7rem; padding:2px 6px; border-radius:4px; cursor:pointer" onclick="document.getElementById('discount-value').value=${v}; syncBillingStateFromUI(); updateLiveBill();">${v === 0 ? 'Clear' : (isPct ? v + '%' : 'Rs ' + v)}</button>`).join('')}
+  </div>
+  <input class="input-field" style="width:100%; font-size:1rem; font-weight:600" type="number" id="discount-value" placeholder="0" value="${billingState.discountValue || 0}" min="0" ${isPct ? 'max="100"' : ''} oninput="syncBillingStateFromUI(); updateLiveBill();">
+  `;
 }
 
 function setQuickDeliveryCharge(amt) {
@@ -3116,19 +3168,9 @@ function renderBilling(){
           <input class="input-field" style="width:100%; font-size:1rem; font-weight:600" type="number" id="delivery-charge" placeholder="0" value="${billingState.deliveryCharge || 0}" min="0" oninput="syncBillingStateFromUI(); updateLiveBill();">
         </div>
 
-        <!-- Discount (%) -->
-        <div style="margin-top:.85rem; padding-top:.85rem; border-top:1px dashed var(--border)">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.4rem">
-            <label style="font-size:.75rem; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; font-weight:600">
-              🏷️ Discount (%)
-            </label>
-            <div style="display:flex; gap:.25rem">
-              ${[0, 5, 10, 15, 20].map(pct => `
-                <button type="button" class="btn-xs" style="background:var(--surface2); border:1px solid var(--border); color:var(--text2); font-size:.7rem; padding:2px 6px; border-radius:4px; cursor:pointer" onclick="document.getElementById('discount-pct').value=${pct}; syncBillingStateFromUI(); updateLiveBill();">${pct === 0 ? '0%' : pct+'%'}</button>
-              `).join('')}
-            </div>
-          </div>
-          <input class="input-field" style="width:100%; font-size:1rem; font-weight:600" type="number" id="discount-pct" placeholder="0" value="${billingState.discountPct || 0}" min="0" max="100" oninput="syncBillingStateFromUI(); updateLiveBill();">
+        <!-- Discount (% or flat Rs — toggle in renderDiscountBlock) -->
+        <div id="discount-block" style="margin-top:.85rem; padding-top:.85rem; border-top:1px dashed var(--border)">
+          ${renderDiscountBlock()}
         </div>
 
         <!-- Per Head Charges -->
@@ -3235,8 +3277,9 @@ function generateMergedBill(billKey,type,quiet=false){
   });
   const items=Object.values(mergedItems);
   const sub=items.reduce((a,i)=>a+(Number(i.qty)||0)*(Number(i.price)||0),0);
-  const disc=parseFloat(document.getElementById('discount-pct')?.value)||0;
-  const discAmt=Math.round(sub*disc/100);
+  const discRaw=parseFloat(document.getElementById('discount-value')?.value)||0;
+  const discInfo=computeDiscount(sub, discRaw, billingState.discountType || 'pct');
+  const discAmt=discInfo.amt;
   const perHeadRate=parseFloat(document.getElementById('per-head-rate')?.value)||0;
   const perHeadPersons=parseInt(document.getElementById('per-head-persons')?.value,10)||0;
   const perHead=perHeadRate*perHeadPersons;
@@ -3244,7 +3287,7 @@ function generateMergedBill(billKey,type,quiet=false){
   const total=Math.max(0, sub-discAmt+perHead+deliveryCharge);
 
   const cashReceived=parseFloat(document.getElementById('cash-received')?.value)||0;
-  const changeReturn=cashReceived>=total ? (cashReceived-total) : 0;
+  const balance=cashReceived-total;
 
   if (typeof updateCashReceivedCalc === 'function') {
     updateCashReceivedCalc(total);
@@ -3272,13 +3315,16 @@ function generateMergedBill(billKey,type,quiet=false){
     ${group.length>1?`<div style="background:rgba(74,144,217,.08);border-radius:4px;padding:.4rem .6rem;margin:.5rem 0;font-size:.72rem;color:var(--blue)">✓ ${group.length} bills merged</div>`:''}
     ${items.map(i=>`<div class="bill-row"><span>${i.qty}× ${i.name}${i.desc?`<br><small style="color:var(--text2);font-weight:normal">↳ ${i.desc}</small>`:''}</span><span>Rs ${(i.qty*i.price).toLocaleString()}</span></div>`).join('')}
     <div class="bill-row" style="margin-top:.5rem"><span>Subtotal</span><span>Rs ${sub.toLocaleString()}</span></div>
-    ${disc?`<div class="bill-row" style="color:var(--green)"><span>Discount (${disc}%)</span><span>−Rs ${discAmt.toLocaleString()}</span></div>`:''}
+    ${discAmt?`<div class="bill-row" style="color:var(--green)"><span>Discount (${discInfo.label})</span><span>−Rs ${discAmt.toLocaleString()}</span></div>`:''}
     ${perHead?`<div class="bill-row"><span>Per Head (Rs ${perHeadRate.toLocaleString()} &times; ${perHeadPersons} persons)</span><span>Rs ${perHead.toLocaleString()}</span></div>`:''}
     ${deliveryCharge?`<div class="bill-row" style="color:var(--amber)"><span>Delivery Charges</span><span>+Rs ${deliveryCharge.toLocaleString()}</span></div>`:''}
     <div class="bill-row total"><span>TOTAL</span><span>Rs ${total.toLocaleString()}</span></div>
     ${cashReceived?`
       <div class="bill-row" style="margin-top:.5rem;padding-top:.4rem;border-top:1px dashed var(--border)"><span>Cash Received</span><span>Rs ${cashReceived.toLocaleString()}</span></div>
-      <div class="bill-row" style="color:var(--green);font-weight:700"><span>Change Return</span><span>Rs ${changeReturn.toLocaleString()}</span></div>
+      ${balance>=0
+        ? `<div class="bill-row" style="color:var(--green);font-weight:700"><span>Change Return</span><span>Rs ${balance.toLocaleString()}</span></div>`
+        : `<div class="bill-row" style="color:var(--red);font-weight:700"><span>Balance Due</span><span>Rs ${Math.abs(balance).toLocaleString()}</span></div>`
+      }
     `:''}
     <div style="text-align:center;margin-top:1rem;font-size:.75rem;color:var(--text3)">Thank you for dining with us!<br>Please visit again 🙏<div style="font-size:.68rem;color:var(--text3);margin-top:.4rem;font-weight:600">Developer Contact: 03255775600</div></div>`;
   }
@@ -3342,15 +3388,16 @@ function buildReceiptHtml(isCustomerInvoice = false) {
   group.forEach(o=>{ o.items.forEach(i=>{ if(mergedItems[i.name]) mergedItems[i.name].qty+=i.qty; else mergedItems[i.name]={...i}; }); });
   const items = Object.values(mergedItems);
   const sub = items.reduce((a,i)=>a+i.qty*i.price, 0);
-  const disc = parseFloat(document.getElementById('discount-pct')?.value)||0;
-  const discAmt = Math.round(sub*disc/100);
+  const discRaw = parseFloat(document.getElementById('discount-value')?.value)||0;
+  const discInfo = computeDiscount(sub, discRaw, billingState.discountType || 'pct');
+  const discAmt = discInfo.amt;
   const perHeadRate = parseFloat(document.getElementById('per-head-rate')?.value)||0;
   const perHeadPersons = parseInt(document.getElementById('per-head-persons')?.value,10)||0;
   const perHead = perHeadRate*perHeadPersons;
   const deliveryCharge = parseFloat(document.getElementById('delivery-charge')?.value)||0;
   const total = Math.max(0, sub - discAmt + perHead + deliveryCharge);
   const cashReceived = parseFloat(document.getElementById('cash-received')?.value)||0;
-  const changeReturn = cashReceived >= total ? (cashReceived - total) : 0;
+  const balance = cashReceived - total;
 
   const paymentEl = document.getElementById('selected-payment');
   const paymentMethod = paymentEl?.textContent?.replace('✓ ','').replace(' selected','').trim() || 'Cash';
@@ -3463,9 +3510,9 @@ function buildReceiptHtml(isCustomerInvoice = false) {
       <td class="col-name">Subtotal</td>
       <td class="col-amt">Rs ${sub.toLocaleString()}</td>
     </tr>
-    ${disc?`<tr>
+    ${discAmt?`<tr>
       <td class="col-no"></td>
-      <td class="col-name">Discount (${disc}%)</td>
+      <td class="col-name">Discount (${discInfo.label})</td>
       <td class="col-amt">- Rs ${discAmt.toLocaleString()}</td>
     </tr>`:''}
     ${perHead?`<tr>
@@ -3492,8 +3539,8 @@ function buildReceiptHtml(isCustomerInvoice = false) {
     </tr>
     <tr style="font-size:13px;font-weight:900">
       <td class="col-no"></td>
-      <td class="col-name">CHANGE RETURN</td>
-      <td class="col-amt">Rs ${changeReturn.toLocaleString()}</td>
+      <td class="col-name">${balance>=0?'CHANGE RETURN':'BALANCE DUE'}</td>
+      <td class="col-amt">Rs ${Math.abs(balance).toLocaleString()}</td>
     </tr>
     `:''}
   </table>
@@ -3791,6 +3838,17 @@ function printBill(){
     toast('Please generate a bill first','error'); return;
   }
 
+  // Cash Received is short of the total — confirm before settling so a
+  // cashier doesn't accidentally close out a bill the customer hasn't
+  // actually paid in full.
+  if ((billingState.paymentMethod || 'Cash') === 'Cash') {
+    const balanceRow = Array.from(billDisplay.querySelectorAll('.bill-row')).find(r => r.textContent.includes('Balance Due'));
+    if (balanceRow) {
+      const shortText = balanceRow.querySelector('span:last-child')?.textContent || 'the remaining amount';
+      if (!confirm(`Cash received is short by ${shortText}. Settle this bill anyway?`)) return;
+    }
+  }
+
   const htmlContent = buildReceiptHtml(false); // false = Final Sales Receipt
   if (!htmlContent) {
     toast('No bill to print','error'); return;
@@ -3885,7 +3943,7 @@ async function finalizeSale(){
   if(!currentBillKey){toast('No bill generated yet','error');return;}
   const today=new Date().toISOString().split('T')[0];
   const selectedPayment=document.getElementById('selected-payment')?.textContent?.replace('✓ ','').replace(' selected','').trim()||'Cash';
-  const discPct=parseFloat(document.getElementById('discount-pct')?.value)||0;
+  const discRaw=parseFloat(document.getElementById('discount-value')?.value)||0;
   const perHeadRate=parseFloat(document.getElementById('per-head-rate')?.value)||0;
   const perHeadPersons=parseInt(document.getElementById('per-head-persons')?.value,10)||0;
   const perHead=perHeadRate*perHeadPersons;
@@ -3919,7 +3977,8 @@ async function finalizeSale(){
   group.forEach(o=>{ (o.items || []).forEach(i=>{ if(mergedItems[i.name])mergedItems[i.name].qty+=(Number(i.qty)||0); else mergedItems[i.name]={...i, qty: Number(i.qty)||0, price: Number(i.price)||0}; }); });
   const items=Object.values(mergedItems);
   const sub=items.reduce((a,i)=>a+(Number(i.qty)||0)*(Number(i.price)||0),0);
-  const discAmt=Math.round(sub*discPct/100);
+  const discInfo=computeDiscount(sub, discRaw, billingState.discountType || 'pct');
+  const discAmt=discInfo.amt;
   const total=Number(Math.max(0, sub-discAmt+perHead+deliveryCharge)||0);
   const changeReturn=cashReceived>=total ? (cashReceived-total) : 0;
 
@@ -3933,7 +3992,7 @@ async function finalizeSale(){
     items, total: Number(total || 0),
     payment:selectedPayment,
     waiter:group[0]?.waiter||currentUser,
-    discount:discPct, perHead, deliveryCharge, cashReceived, changeReturn,
+    discount:discInfo.pct, perHead, deliveryCharge, cashReceived, changeReturn,
     closed: 0, closeoutId: ''
   });
 
@@ -3983,7 +4042,8 @@ async function finalizeSale(){
 
   // Reset billing inputs
   resetBillingState();
-  if (document.getElementById('discount-pct')) document.getElementById('discount-pct').value = '0';
+  const discBlock = document.getElementById('discount-block');
+  if (discBlock) discBlock.innerHTML = renderDiscountBlock();
   if (document.getElementById('per-head-rate')) document.getElementById('per-head-rate').value = '0';
   if (document.getElementById('per-head-persons')) document.getElementById('per-head-persons').value = '1';
   if (document.getElementById('delivery-charge')) document.getElementById('delivery-charge').value = '0';
