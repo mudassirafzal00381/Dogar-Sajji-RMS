@@ -5786,7 +5786,7 @@ let supabaseClient = null;
 let realtimeDebounceTimer = null;
 let isSavingToCloud = false;
 
-function updateCloudBadge(isConnected) {
+function updateCloudBadge(isConnected, customMsg) {
   const btn = document.getElementById('btn-cloud-sync');
   if (!btn) return;
   if (isConnected) {
@@ -5794,9 +5794,27 @@ function updateCloudBadge(isConnected) {
     btn.title = 'Supabase Cloud DB Connected & Syncing Live across Mobile & PC';
     btn.style.borderColor = 'var(--green)';
   } else {
-    btn.innerHTML = '☁️ Cloud DB <span style="font-size:0.72rem;padding:0.15rem 0.45rem;border-radius:10px;background:rgba(245,158,11,0.18);color:var(--gold);font-weight:600">☁️ Local</span>';
-    btn.title = 'Running in Browser Storage mode. Click to connect Supabase Cloud DB for live multi-device sync.';
-    btn.style.borderColor = 'var(--gold)';
+    const statusText = customMsg || 'Local';
+    btn.innerHTML = `☁️ Cloud DB <span style="font-size:0.72rem;padding:0.15rem 0.45rem;border-radius:10px;background:rgba(239,68,68,0.18);color:var(--red);font-weight:600">🔴 ${statusText}</span>`;
+    btn.title = 'Running in Browser Storage mode (Cloud connection inactive). Click to check credentials.';
+    btn.style.borderColor = 'var(--red)';
+  }
+}
+
+async function validateSupabaseConnection() {
+  if (!supabaseClient) return false;
+  try {
+    const { data, error } = await supabaseClient.from('menu_categories').select('count', { count: 'exact', head: true });
+    if (error) {
+      console.warn('❌ Supabase API Auth Error:', error.message);
+      updateCloudBadge(false, 'Auth Error (Check Key)');
+      return false;
+    }
+    updateCloudBadge(true);
+    return true;
+  } catch (e) {
+    updateCloudBadge(false, 'Connection Error');
+    return false;
   }
 }
 
@@ -5808,13 +5826,13 @@ function initSupabaseFromStorage() {
   if (supaLib && url && key && url.includes('supabase.co')) {
     try {
       supabaseClient = supaLib.createClient(url, key);
-      console.log('⚡ Supabase Cloud Database Client Connected ✓');
+      console.log('⚡ Supabase Cloud Database Client Initialized ✓');
       setupRealtimeSubscriptions();
-      updateCloudBadge(true);
+      validateSupabaseConnection();
       return true;
     } catch(e) { console.warn('Supabase init failed:', e); }
   }
-  updateCloudBadge(false);
+  updateCloudBadge(false, 'Offline');
   return false;
 }
 try { initSupabaseFromStorage(); } catch(e){}
