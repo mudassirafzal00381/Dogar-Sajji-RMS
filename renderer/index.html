@@ -6635,16 +6635,16 @@ async function loadFromLocal() {
           }));
         }
 
-        if (Array.isArray(cloudBills) && cloudBills.length > 0) {
+        if (Array.isArray(cloudBills)) {
           const ubObj = {};
           cloudBills.forEach(r => {
             ubObj[r.bill_key] = {
-              orderId: r.order_id || r.bill_key, items: r.items || [], time: r.time || '', addOnTickets: Number(r.add_on_tickets || 0)
+              orderId: r.order_id || r.bill_key,
+              items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []),
+              time: r.time || '', addOnTickets: Number(r.add_on_tickets || 0)
             };
           });
           unpaidBills = ubObj;
-        } else if (Object.keys(unpaidBills).length === 0 && Array.isArray(cloudBills)) {
-          unpaidBills = {};
         }
 
         if (Array.isArray(cloudMenu) && cloudMenu.length > 0) {
@@ -6660,7 +6660,8 @@ async function loadFromLocal() {
 
         if (Array.isArray(cloudDeals) && cloudDeals.length > 0) {
           deals = cloudDeals.map(r => ({
-            id: Number(r.id), name: r.name, category: r.category, items: r.items || [],
+            id: Number(r.id), name: r.name, category: r.category,
+            items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []),
             price: Number(r.price || 0), available: r.available !== false
           }));
         }
@@ -6677,42 +6678,48 @@ async function loadFromLocal() {
         if (Array.isArray(cloudEmp) && cloudEmp.length > 0) {
           employees = cloudEmp.map(r => ({
             id: Number(r.id), name: r.name, cnic: r.cnic || '', phone: r.phone || '', designation: r.designation || '', salary: Number(r.salary || 0),
-            status: r.status || 'Present', address: r.address || '', salaryPayments: r.salary_payments || [], advances: r.advances || [], attendanceLog: r.attendance_log || []
+            status: r.status || 'Present', address: r.address || '',
+            salaryPayments: typeof r.salary_payments === 'string' ? JSON.parse(r.salary_payments) : (r.salary_payments || []),
+            advances: typeof r.advances === 'string' ? JSON.parse(r.advances) : (r.advances || []),
+            attendanceLog: typeof r.attendance_log === 'string' ? JSON.parse(r.attendance_log) : (r.attendance_log || [])
           }));
         }
 
-        if (Array.isArray(cloudPc) && cloudPc.length > 0) {
+        if (Array.isArray(cloudPc)) {
           pettyCash = cloudPc.map(r => ({
             id: Number(r.id), name: r.name, category: r.category, amount: Number(r.amount || 0), date: r.date || '', notes: r.notes || '',
             closed: !!r.closed, closeoutId: r.closeout_id || ''
           }));
         }
 
-        if (Array.isArray(cloudSales) && cloudSales.length > 0) {
+        if (Array.isArray(cloudSales)) {
           salesLedger = cloudSales.map(r => ({
-            id: r.id, date: r.date, table: r.table_id != null ? Number(r.table_id) : null, items: r.items || [], total: Number(r.total || 0), payment: r.payment, waiter: r.waiter,
+            id: r.id, date: r.date, table: r.table_id != null ? Number(r.table_id) : null,
+            items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []),
+            total: Number(r.total || 0), payment: r.payment, waiter: r.waiter,
             discount: Number(r.discount || 0), perHead: Number(r.per_head || 0), orderType: r.order_type || 'Dine-in',
             customerPhone: r.customer_phone || '', customerAddress: r.customer_address || '',
             closed: !!r.closed, closeoutId: r.closeout_id || ''
           }));
         }
 
-        if (Array.isArray(cloudExp) && cloudExp.length > 0) {
+        if (Array.isArray(cloudExp)) {
           expenseLedger = cloudExp.map(r => ({
             id: r.id, date: r.date, category: r.category, amount: Number(r.amount || 0), description: r.description || '', meta: r.meta || {}
           }));
         }
 
-        if (Array.isArray(cloudCancelled) && cloudCancelled.length > 0) {
+        if (Array.isArray(cloudCancelled)) {
           cancelledOrders = cloudCancelled.map(r => ({
             id: r.id, date: r.date, time: r.time, orderId: r.order_id, table: r.table_id,
-            orderType: r.order_type || 'Dine-in', items: r.items || [], cost: Number(r.cost || 0),
-            waiter: r.waiter || '', cancelType: r.cancel_type || 'Partial',
+            orderType: r.order_type || 'Dine-in',
+            items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []),
+            cost: Number(r.cost || 0), waiter: r.waiter || '', cancelType: r.cancel_type || 'Partial',
             closed: !!r.closed, closeoutId: r.closeout_id || ''
           }));
         }
 
-        if (Array.isArray(cloudDailyCloseouts) && cloudDailyCloseouts.length > 0) {
+        if (Array.isArray(cloudDailyCloseouts)) {
           dailyCloseouts = cloudDailyCloseouts.map(r => ({
             id: r.id, date: r.date, time: r.time, totalSales: Number(r.total_sales || 0),
             salesCount: Number(r.sales_count || 0), totalExpenses: Number(r.total_expenses || 0), totalProfit: Number(r.total_profit || 0),
