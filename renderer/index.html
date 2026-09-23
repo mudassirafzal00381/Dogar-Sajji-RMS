@@ -7277,7 +7277,15 @@ async function pushAllDataToCloud() {
   }
 }
 
-// ── Auto Background Sync every 45 seconds ──
+// ── Auto Background Sync every 7 seconds ──
+// This is the ONLY sync mechanism that reliably works when a device's
+// network/firewall silently blocks the Supabase Realtime WebSocket (seen in
+// the field: REST reads/writes succeed fine, but the realtime connection
+// never even gets attempted — no error, it just never arrives instantly).
+// Realtime (setupRealtimeSubscriptions) still updates instantly when it
+// works; this is the fallback that guarantees every device converges within
+// a few seconds even when it doesn't, without needing to fix that device's
+// network setup.
 setInterval(() => {
   if (supabaseClient) {
     loadFromLocal().then(() => {
@@ -7285,7 +7293,7 @@ setInterval(() => {
       if (typeof renderTables === 'function') renderTables();
     }).catch(err => console.warn('Periodic sync background error:', err));
   }
-}, 45000);
+}, 7000);
 
 // ── ONE-TIME MIGRATION: old localStorage data → SQLite ──
 // Runs once per install; marks itself done afterwards so it never re-runs
