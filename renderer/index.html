@@ -874,6 +874,17 @@ let pettyCash = [];
 let pettyCashFilter = 'All';
 let nextPettyId = 1;
 
+// ── PRINTER CONFIG (shared network ESC/POS thermal printers) ──
+// Configured once by the admin (see openPrinterSettings) and synced through
+// the same settings channel as everything else (SQLite / backend API /
+// Supabase), so every device — including mobile Order Taker terminals —
+// automatically prints kitchen tickets and bills to the same two physical
+// printers without ever being configured per-device.
+let printerConfig = {
+  kitchen: { ip: '', port: 9100 },
+  billing: { ip: '', port: 9100 },
+};
+
 // ── SALES LEDGER (historical completed sales for date-range reporting) ──
 let salesLedger = []; // Populated when sales are completed
 let expenseLedger = []; // Populated by salary payments and manual entries
@@ -2526,85 +2537,77 @@ async function submitFullOrderCancellation(orderId) {
   toast(`Order ${orderLabel(o)} cancelled & Kitchen Ticket printed ✓`);
 }
 
-function printKitchenCancellationTicket(order, cancelledItems, isFullCancellation = false) {
-  const now = new Date().toLocaleString('en-PK');
-  const type = order.orderType || 'Dine-in';
-  const headerTitle = type === 'Dine-in' ? `TABLE ${order.table}` : type.toUpperCase();
+// ══════════════════════════════════════════════════════
+// ⚡ ESC/POS NETWORK THERMAL PRINTING — Kitchen & Billing printers
+// ══════════════════════════════════════════════════════
+// These two functions are the ONLY way a kitchen ticket or customer bill
+// reaches a physical printer. Neither ever picks a printer IP itself — they
+// just POST structured order/bill data to this device's own print agent
+// (whichever server.js instance served this page: localhost in the
+// Electron app, or the counter PC's LAN address for a mobile browser),
+// which reads the shared printerConfig and does the actual ESC/POS TCP
+// send. That's what makes routing unconditional: a kitchen job can never
+// end up on the billing printer or vice versa, because the client never
+// gets to choose an address — only a logical target ('kitchen'/'billing').
+//
+// jobId is generated once per logical print action and must be reused by
+// the CALLER if it retries the same action (e.g. after a network error) —
+// that's what lets the print agent recognize "this is the same job being
+// retried" and skip printing it twice, without blocking a genuinely new,
+// user-initiated reprint (which should always pass a fresh jobId).
+function makePrintJobId(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
-  const htmlContent = `<!DOCTYPE html><html><head>
-  <meta charset="UTF-8">
-  <title>Kitchen Cancellation - ${order.id}</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-    @page { size: 80mm portrait; margin: 0; }
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body {
-      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      font-size: 12px;
-      font-weight: 600;
-      color: #000;
-      background: #fff;
-      width: 80mm;
-      padding: 4mm 5mm 12mm 5mm;
-      -webkit-font-smoothing: antialiased;
-      print-color-adjust: exact;
-    }
-    .center { text-align: center; }
-    .bold { font-weight: bold; }
-    .divider { border-top: 1px dashed #000; margin: 5px 0; }
-    .divider-solid { border-top: 2px solid #000; margin: 5px 0; }
-    .status-box {
-      border: 3px double #000;
-      text-align: center;
-      padding: 6px;
-      font-size: 15px;
-      font-weight: 900;
-      margin: 6px 0;
-      letter-spacing: 1px;
-    }
-    .item-row { display:flex; align-items:baseline; gap:6px; margin: 5px 0; font-size:14px; font-weight:bold; }
-    .item-qty { font-size:16px; font-weight:900; min-width:28px; }
-    @media print { button { display:none; } }
-  </style>
-  </head><body>
-
-  <div class="center bold" style="font-size:11px;letter-spacing:3px;border-bottom:2px solid #000;padding-bottom:4px;margin-bottom:4px">Dogar Sajji & Restaurant</div>
-  <div class="center bold" style="font-size:13px;margin-bottom:2px;letter-spacing:1px">⚠️ KITCHEN CANCELLATION ⚠️</div>
-  <div class="center" style="font-size:10px;color:#000">${now}</div>
-
-  <div class="divider-solid"></div>
-
-  <div class="center bold" style="font-size:22px;letter-spacing:2px;margin:4px 0">${headerTitle}</div>
-  <div class="center" style="font-size:11px;margin-bottom:4px">Order: ${order.id} &nbsp;&bull;&nbsp; Staff: ${order.waiter || currentUser}</div>
-
-  <div class="status-box">${isFullCancellation ? '❌ COMPLETE ORDER CANCELLED' : '✂️ ITEM(S) CANCELLED'}</div>
-  <div class="divider"></div>
-
-  ${cancelledItems.map(i => `
-    <div class="item-row">
-      <span class="item-qty">CANCEL ${i.qty}×</span>
-      <span>${i.name}</span>
-    </div>
-    ${i.desc ? `<div style="font-size:11px;font-weight:normal;padding-left:34px;margin-bottom:4px">↳ ${i.desc}</div>` : ''}
-  `).join('')}
-
-  <div class="divider-solid" style="margin-top:8px"></div>
-  <div class="center" style="font-size:10px;margin-top:4px">— End of Cancellation Ticket —</div>
-  </body></html>`;
-
-  const printerDevice = localStorage.getItem('dogar_kitchen_printer') || localStorage.getItem('hfc_printer_device') || '';
-  const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
-
-  if (window.api && window.api.printReceipt) {
-    window.api.printReceipt(htmlContent, {
-      silent: silentPrint,
-      deviceName: printerDevice || undefined
-    }).catch(() => {
-      fallbackPrintWindow(htmlContent, false);
-    });
-  } else {
-    fallbackPrintWindow(htmlContent, false);
+async function printKitchenReceipt(payload) {
+  const jobId = payload.jobId || makePrintJobId('kitchen');
+  const result = await apiCall('print/kitchen', 'POST', { ...payload, jobId });
+  if (!result) {
+    toast('Kitchen printer unreachable — check the print service / network connection', 'error');
+    return { success: false, error: 'unreachable', jobId };
   }
+  if (!result.success) {
+    toast(`Kitchen printer error: ${result.error || 'unknown error'}`, 'error');
+    return { success: false, error: result.error, jobId };
+  }
+  toast(result.duplicate ? 'Kitchen ticket already sent ✓' : 'Kitchen ticket printed ✓');
+  return { success: true, duplicate: !!result.duplicate, jobId };
+}
+
+async function printCustomerBill(payload) {
+  const jobId = payload.jobId || makePrintJobId('billing');
+  const result = await apiCall('print/billing', 'POST', { ...payload, jobId });
+  if (!result) {
+    toast('Billing printer unreachable — check the print service / network connection', 'error');
+    return { success: false, error: 'unreachable', jobId };
+  }
+  if (!result.success) {
+    toast(`Billing printer error: ${result.error || 'unknown error'}`, 'error');
+    return { success: false, error: result.error, jobId };
+  }
+  toast(result.duplicate ? 'Receipt already sent to printer ✓' : (payload.isInvoice ? 'Customer invoice printed ✓' : 'Receipt printed ✓'));
+  return { success: true, duplicate: !!result.duplicate, jobId };
+}
+
+async function testPrinterConnection(target) {
+  const jobId = makePrintJobId('test_' + target);
+  const result = await apiCall('print/test', 'POST', { target, jobId });
+  if (!result) return { success: false, error: 'Print service unreachable' };
+  return result;
+}
+
+function printKitchenCancellationTicket(order, cancelledItems, isFullCancellation = false) {
+  printKitchenReceipt({
+    reason: isFullCancellation ? 'cancelled-full' : 'cancelled-partial',
+    orderId: order.id,
+    orderType: order.orderType || 'Dine-in',
+    table: order.table,
+    time: order.time,
+    waiter: order.waiter || currentUser,
+    customerPhone: order.customerPhone,
+    customerAddress: order.customerAddress,
+    items: cancelledItems,
+  });
 }
 
 async function updateOrder(id, status) {
@@ -2819,100 +2822,18 @@ async function saveOrderEdit(id){
 function printKitchenUpdateTicket(id){
   const o=orders.find(x=>x.id===id);
   if(!o){toast('Order not found','error');return;}
-  const now=new Date().toLocaleString('en-PK');
-
-  const htmlContent = `<!DOCTYPE html><html><head>
-  <meta charset="UTF-8">
-  <title>Order Updated - ${o.id}</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-    @page { size: 80mm portrait; margin: 0; }
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body {
-      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      font-size: 13px;
-      font-weight: 600;
-      color: #000 !important;
-      background: #fff;
-      width: 80mm;
-      padding: 4mm 4mm 8mm 4mm;
-      -webkit-font-smoothing: antialiased;
-      print-color-adjust: exact;
-    }
-    .center { text-align: center; }
-    .bold { font-weight: bold; }
-    .divider { border-top: 1px dashed #000; margin: 5px 0; }
-    .divider-solid { border-top: 2px solid #000; margin: 5px 0; }
-    .status-box {
-      border: 3px double #000;
-      text-align: center;
-      padding: 5px;
-      font-size: 15px;
-      font-weight: bold;
-      margin: 6px 0;
-      letter-spacing: 1.5px;
-    }
-    .item-row { display:flex; align-items:baseline; gap:6px; margin: 4px 0; font-size:14px; font-weight:bold; }
-    .item-qty { font-size:18px; font-weight:900; min-width:28px; }
-    .note-box { border:2px solid #000; padding:5px 7px; margin-top:6px; font-size:12px; }
-    @media print { button { display:none; } }
-  </style>
-  </head><body>
-
-  <!-- LOGO HEADER -->
-  <div class="center bold" style="font-size:11px;letter-spacing:3px;border-bottom:2px solid #000;padding-bottom:4px;margin-bottom:4px">Dogar Sajji & Restaurant</div>
-  <div class="center bold" style="font-size:11px;margin-bottom:2px">*** KITCHEN TICKET ***</div>
-  <div class="center" style="font-size:10px;color:#333">${now}</div>
-
-  <div class="divider-solid"></div>
-
-  <!-- TABLE & ORDER INFO -->
-  <div class="center bold" style="font-size:22px;letter-spacing:2px;margin:4px 0">${(o.orderType||'Dine-in')==='Dine-in'?'TABLE '+o.table:(o.orderType==='Delivery'?'DELIVERY':'TAKEAWAY')}</div>
-  <div class="center" style="font-size:11px;margin-bottom:4px">Order: ${o.id} &nbsp;&bull;&nbsp; ${o.time}</div>
-  ${o.orderType==='Delivery'?`<div class="center bold" style="font-size:11px;margin-bottom:4px">${o.customerPhone||'—'}${o.customerAddress?' &bull; '+o.customerAddress:''}</div>`:''}
-
-  <div class="status-box">⚠ ORDER UPDATED ⚠<br><span style="font-size:11px;letter-spacing:1px">FULL REVISED ORDER BELOW</span></div>
-  <div class="divider"></div>
-
-  <!-- ITEMS: the complete, current order — not a diff of what changed -->
-  ${o.items.map(i=>`
-    <div class="item-row">
-      <span class="item-qty">${i.qty}×</span>
-      <span>${i.name}</span>
-    </div>
-    ${i.desc ? `<div style="font-size:11px;font-weight:normal;padding-left:34px;margin-bottom:4px;color:#000">↳ ${i.desc}</div>` : ''}`).join('')}
-
-  ${o.note?`
-  <div class="divider"></div>
-  <div class="note-box">
-    <div class="bold" style="font-size:11px;margin-bottom:2px">⚠ SPECIAL INSTRUCTIONS:</div>
-    <div>${o.note}</div>
-  </div>`:''}
-
-  <div class="divider-solid" style="margin-top:8px"></div>
-  <div class="center bold" style="font-size:11px;margin-top:4px">Staff: ${o.waiter || 'Counter'}</div>
-  <div class="center" style="font-size:10px;margin-top:2px">— End of Ticket —</div>
-  </body></html>`;
-
-  const printerDevice = localStorage.getItem('hfc_printer_device') || '';
-  const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
-
-  if (window.api && window.api.printReceipt) {
-    window.api.printReceipt(htmlContent, {
-      silent: silentPrint,
-      deviceName: printerDevice || undefined
-    }).then(res => {
-      if (res && res.success) {
-        toast(`Kitchen notified of order update for ${orderLabel(o)} ✓`);
-      } else {
-        toast(`Order update ticket sent to printer ✓`);
-      }
-    }).catch(() => {
-      fallbackPrintWindow(htmlContent, false);
-    });
-  } else {
-    fallbackPrintWindow(htmlContent, false);
-  }
+  printKitchenReceipt({
+    reason: 'updated',
+    orderId: o.id,
+    orderType: o.orderType || 'Dine-in',
+    table: o.table,
+    time: o.time,
+    waiter: o.waiter || 'Counter',
+    note: o.note,
+    customerPhone: o.customerPhone,
+    customerAddress: o.customerAddress,
+    items: o.items,
+  });
 }
 
 // ── KITCHEN ──
@@ -2961,101 +2882,19 @@ async function kitchenUpdate(id,status){
 function printKitchenTicket(id){
   const o=orders.find(x=>x.id===id);
   if(!o){toast('Order not found','error');return;}
-  const now=new Date().toLocaleString('en-PK');
-  const statusLabel=o.status==='confirmed'?'NEW ORDER':o.status==='preparing'?'IN PREPARATION':'READY';
-
-  const htmlContent = `<!DOCTYPE html><html><head>
-  <meta charset="UTF-8">
-  <title>Kitchen Ticket - ${o.id}</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-    @page { size: 80mm portrait; margin: 0; }
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body {
-      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      font-size: 13px;
-      font-weight: 600;
-      color: #000 !important;
-      background: #fff;
-      width: 80mm;
-      padding: 4mm 4mm 8mm 4mm;
-      -webkit-font-smoothing: antialiased;
-      print-color-adjust: exact;
-    }
-    .center { text-align: center; }
-    .bold { font-weight: bold; }
-    .divider { border-top: 1px dashed #000; margin: 5px 0; }
-    .divider-solid { border-top: 2px solid #000; margin: 5px 0; }
-    .status-box {
-      border: 3px solid #000;
-      text-align: center;
-      padding: 4px;
-      font-size: 16px;
-      font-weight: bold;
-      margin: 6px 0;
-      letter-spacing: 2px;
-    }
-    .item-row { display:flex; align-items:baseline; gap:6px; margin: 4px 0; font-size:14px; font-weight:bold; }
-    .item-qty { font-size:18px; font-weight:900; min-width:28px; }
-    .note-box { border:2px solid #000; padding:5px 7px; margin-top:6px; font-size:12px; }
-    @media print { button { display:none; } }
-  </style>
-  </head><body>
-
-  <!-- LOGO HEADER -->
-  <div class="center bold" style="font-size:11px;letter-spacing:3px;border-bottom:2px solid #000;padding-bottom:4px;margin-bottom:4px">Dogar Sajji & Restaurant</div>
-  <div class="center bold" style="font-size:11px;margin-bottom:2px">*** KITCHEN TICKET ***</div>
-  <div class="center" style="font-size:10px;color:#333">${now}</div>
-
-  <div class="divider-solid"></div>
-
-  <!-- TABLE & ORDER INFO -->
-  <div class="center bold" style="font-size:22px;letter-spacing:2px;margin:4px 0">${(o.orderType||'Dine-in')==='Dine-in'?'TABLE '+o.table:(o.orderType==='Delivery'?'DELIVERY':'TAKEAWAY')}</div>
-  <div class="center" style="font-size:11px;margin-bottom:4px">Order: ${o.id} &nbsp;&bull;&nbsp; ${o.time}</div>
-  ${o.orderType==='Delivery'?`<div class="center bold" style="font-size:11px;margin-bottom:4px">${o.customerPhone||'—'}${o.customerAddress?' &bull; '+o.customerAddress:''}</div>`:''}
-  ${o.isAddOn?`<div class="center bold" style="font-size:12px;border:2px solid #000;padding:2px;margin-bottom:4px">[ ADD-ON ORDER ]</div>`:''}
-
-  <div class="status-box">${statusLabel}</div>
-  <div class="divider"></div>
-
-  <!-- ITEMS -->
-  ${o.items.map(i=>`
-    <div class="item-row">
-      <span class="item-qty">${i.qty}×</span>
-      <span>${i.name}</span>
-    </div>
-    ${i.desc ? `<div style="font-size:11px;font-weight:normal;padding-left:34px;margin-bottom:4px;color:#000">↳ ${i.desc}</div>` : ''}`).join('')}
-
-  ${o.note?`
-  <div class="divider"></div>
-  <div class="note-box">
-    <div class="bold" style="font-size:11px;margin-bottom:2px">⚠ SPECIAL INSTRUCTIONS:</div>
-    <div>${o.note}</div>
-  </div>`:''}
-
-  <div class="divider-solid" style="margin-top:8px"></div>
-  <div class="center" style="font-size:10px;margin-top:4px">— End of Ticket —</div>
-  </body></html>`;
-
-  const printerDevice = localStorage.getItem('hfc_printer_device') || '';
-  const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
-
-  if (window.api && window.api.printReceipt) {
-    window.api.printReceipt(htmlContent, {
-      silent: silentPrint,
-      deviceName: printerDevice || undefined
-    }).then(res => {
-      if (res && res.success) {
-        toast(`Kitchen ticket printed for ${orderLabel(o)} ✓`);
-      } else {
-        toast(`Kitchen ticket sent to printer ✓`);
-      }
-    }).catch(() => {
-      fallbackPrintWindow(htmlContent);
-    });
-  } else {
-    fallbackPrintWindow(htmlContent);
-  }
+  printKitchenReceipt({
+    reason: 'new',
+    orderId: o.id,
+    orderType: o.orderType || 'Dine-in',
+    table: o.table,
+    time: o.time,
+    waiter: o.waiter || 'Counter',
+    note: o.note,
+    isAddOn: o.isAddOn,
+    customerPhone: o.customerPhone,
+    customerAddress: o.customerAddress,
+    items: o.items,
+  });
 }
 
 // ── BILLING STATE & UX HELPERS ──
@@ -3468,7 +3307,12 @@ function selectPayment(m){
   toast(`Payment: ${m} selected`);
 }
 
-function buildReceiptHtml(isCustomerInvoice = false) {
+// Reads the live bill state (currentBillKey/currentBillOrderIds plus the
+// modal's payment inputs) into a plain data object — this is what gets
+// handed to printCustomerBill(), which sends it to the print agent for
+// ESC/POS rendering. No HTML is built here any more; the browser never
+// touches the receipt's actual printed layout.
+function computeCurrentBillData() {
   let orderIds = currentBillOrderIds;
   if(!orderIds || orderIds.length === 0) return null;
 
@@ -3496,190 +3340,33 @@ function buildReceiptHtml(isCustomerInvoice = false) {
 
   const paymentEl = document.getElementById('selected-payment');
   const paymentMethod = paymentEl?.textContent?.replace('✓ ','').replace(' selected','').trim() || 'Cash';
-  const billRef = group.length>1 ? 'Merged #'+group.map(o=>o.id).join('+') : 'Bill #'+group[0].id;
-  const now = new Date().toLocaleString('en-PK');
   const receiptNo = (group[0].id||'').replace(/^ORD/,'').slice(-6);
   const servedBy = group[0]?.waiter || currentUser;
   const orderTypeLabel = type==='Dine-in' ? 'DINE IN' : type.toUpperCase();
+  const mergedRef = group.length>1 ? `Merged: ${group.map(o=>o.id).join(' + ')}` : '';
 
-  const docTitle = isCustomerInvoice ? `Customer Invoice - ${headerLabel}` : `Receipt - ${headerLabel}`;
-  const tagLabel = isCustomerInvoice ? `CUSTOMER INVOICE (UNPAID)` : `SALES RECEIPT`;
-
-  return `<!DOCTYPE html><html><head>
-  <meta charset="UTF-8">
-  <title>${docTitle}</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-    @page { size: 80mm portrait; margin: 0; }
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body {
-      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      font-size: 12px;
-      font-weight: 600;
-      color: #000;
-      background: #fff;
-      width: 80mm;
-      padding: 4mm 5mm 12mm 5mm;
-      -webkit-font-smoothing: antialiased;
-      print-color-adjust: exact;
-    }
-    .center { text-align: center; }
-    .bold { font-weight: 900; }
-    .divider { border-top: 1px dashed #000; margin: 5px 0; }
-    .divider-solid { border-top: 2px solid #000; margin: 5px 0; }
-    .logo-box {
-      text-align: center;
-      border: 3px double #000;
-      padding: 6px 4px 5px 4px;
-      margin-bottom: 6px;
-    }
-    .logo-main { font-size: 22px; font-weight: 900; letter-spacing: 3px; line-height: 1.1; }
-    .logo-sub  { font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform:uppercase; margin-top:2px; }
-    .logo-tag  { font-size: 9px; font-weight: 900; letter-spacing: 2px; margin-top: 4px; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 2px 0; }
-    .logo-info { font-size: 10px; font-weight: 700; margin-top: 3px; }
-    .logo-addr { font-size: 9px;  font-weight: 700; margin-top: 2px; }
-
-    .meta-row { display:flex; justify-content:space-between; font-size:10px; font-weight:bold; padding:1px 0; }
-
-    table.receipt-table {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-    }
-    table.receipt-table td {
-      font-size: 12px;
-      font-weight: bold;
-      color: #000;
-      padding: 3px 0;
-      vertical-align: top;
-    }
-    td.col-no    { width: 8%; }
-    td.col-name  { width: 54%; word-break: break-word; padding-right: 3px; }
-    td.col-amt   { width: 38%; text-align: right; white-space: nowrap; font-weight: 900; }
-    .unit-note   { font-size: 9px; font-weight: 700; color: #333; }
-    tr.total-row td { font-size: 15px; font-weight: 900; padding-top: 6px; border-top: 3px solid #000; }
-    tr.hdr-row td { font-size: 10px; font-weight: 900; letter-spacing: 1px; border-bottom: 2px solid #000; padding-bottom: 3px; }
-
-    .footer { text-align:center; margin-top:8px; }
-    .disclaimer { font-size: 8px; font-weight: 700; color: #444; margin-top: 4px; }
-    @media print { button { display:none; } }
-  </style>
-  </head><body>
-
-  <div class="logo-box">
-    <img src="${appLogoUrl}" style="max-height:92px;width:auto;margin:0 auto 6px auto;display:block;box-shadow:none" alt="Dogar Sajji & Restaurant Logo">
-    <div class="logo-main">Dogar Sajji & Restaurant</div>
-    <div class="logo-sub">Taste the Best Sajji in Town</div>
-    <div class="logo-tag">${tagLabel}</div>
-    <div class="logo-info">&#128222; 0300-1863406</div>
-    <div class="logo-addr">In Front of Govt Graduate College, Multan Road, Muzaffargarh</div>
-  </div>
-
-  <div class="meta-row"><span>${isCustomerInvoice ? 'Invoice #' : 'Receipt #'}</span><span>${receiptNo}</span></div>
-  <div class="meta-row"><span>Date</span><span>${now}</span></div>
-  <div class="meta-row"><span>Order Type</span><span>${orderTypeLabel}${type==='Dine-in'?' · T'+currentBillKey:''}</span></div>
-  <div class="meta-row"><span>Served By</span><span>${servedBy}</span></div>
-  <div class="divider-solid"></div>
-  ${type==='Delivery'?`<div class="center" style="font-size:10px;font-weight:bold;margin-bottom:3px">📞 ${custPhone}${custAddress?' — '+custAddress:''}</div>`:''}
-  ${group.length>1?`<div class="center" style="font-size:10px;font-weight:bold;margin-bottom:3px">${billRef} &nbsp;|&nbsp; Merged: ${group.map(o=>o.id).join(' + ')}</div>`:''}
-  ${!isCustomerInvoice ? `<div class="center" style="font-size:11px;font-weight:900;margin-bottom:4px">Payment: ${paymentMethod}</div>` : `<div class="center" style="font-size:10px;font-weight:900;margin-bottom:4px;border:1px dashed #000;padding:2px">* UNPAID INVOICE (ESTIMATE) *</div>`}
-  <div class="divider"></div>
-
-  <table class="receipt-table">
-    <tr class="hdr-row">
-      <td class="col-no">#</td>
-      <td class="col-name">ITEM</td>
-      <td class="col-amt">AMOUNT</td>
-    </tr>
-    ${items.map((i,idx)=>{
-      const lineTotal = 'Rs '+(i.qty*i.price).toLocaleString();
-      return `<tr>
-        <td class="col-no">${idx+1}.</td>
-        <td class="col-name">${i.qty}&times; ${i.name}${i.desc?`<br><span class="unit-note" style="font-weight:normal;color:#000">↳ ${i.desc}</span>`:''}${i.qty>1?`<br><span class="unit-note">@ Rs ${i.price.toLocaleString()} each</span>`:''}</td>
-        <td class="col-amt">${lineTotal}</td>
-      </tr>`;
-    }).join('')}
-    <tr><td colspan="3"><div class="divider" style="margin:4px 0"></div></td></tr>
-    <tr>
-      <td class="col-no"></td>
-      <td class="col-name">Subtotal</td>
-      <td class="col-amt">Rs ${sub.toLocaleString()}</td>
-    </tr>
-    ${discAmt?`<tr>
-      <td class="col-no"></td>
-      <td class="col-name">Discount (${discInfo.label})</td>
-      <td class="col-amt">- Rs ${discAmt.toLocaleString()}</td>
-    </tr>`:''}
-    ${perHead?`<tr>
-      <td class="col-no"></td>
-      <td class="col-name">Per Head (Rs ${perHeadRate.toLocaleString()} x ${perHeadPersons})</td>
-      <td class="col-amt">Rs ${perHead.toLocaleString()}</td>
-    </tr>`:''}
-    ${deliveryCharge?`<tr>
-      <td class="col-no"></td>
-      <td class="col-name">Delivery Charges</td>
-      <td class="col-amt">+ Rs ${deliveryCharge.toLocaleString()}</td>
-    </tr>`:''}
-    <tr class="total-row">
-      <td class="col-no"></td>
-      <td class="col-name">TOTAL</td>
-      <td class="col-amt">Rs ${total.toLocaleString()}</td>
-    </tr>
-    ${!isCustomerInvoice && cashReceived?`
-    <tr><td colspan="3"><div class="divider" style="margin:4px 0"></div></td></tr>
-    <tr>
-      <td class="col-no"></td>
-      <td class="col-name">Cash Received</td>
-      <td class="col-amt">Rs ${cashReceived.toLocaleString()}</td>
-    </tr>
-    <tr style="font-size:13px;font-weight:900">
-      <td class="col-no"></td>
-      <td class="col-name">${balance>=0?'CHANGE RETURN':'BALANCE DUE'}</td>
-      <td class="col-amt">Rs ${Math.abs(balance).toLocaleString()}</td>
-    </tr>
-    `:''}
-  </table>
-
-  <div class="divider-solid" style="margin-top:7px"></div>
-
-  <div class="footer">
-    <div style="font-size:12px;font-weight:900;margin-bottom:2px">Thank you for dining with us!</div>
-    <div style="font-size:11px;font-weight:bold;margin-bottom:4px">Please visit again &#x1F64F;</div>
-    <div style="font-size:9px;font-weight:bold;letter-spacing:1px">* * * Dogar Sajji & Restaurant * * *</div>
-    <div class="disclaimer" style="font-size:9.5px;font-weight:bold;color:#000;margin-top:4px">Developer Contact: 03255775600</div>
-    <div class="disclaimer">This is a computer generated ${isCustomerInvoice ? 'customer invoice' : 'receipt'}.</div>
-  </div>
-  </body></html>`;
+  return {
+    headerLabel, receiptNo, orderTypeLabel, servedBy, paymentMethod,
+    customerPhone: custPhone, customerAddress: custAddress,
+    items, sub, discAmt, perHeadRate, perHeadPersons, perHead, deliveryCharge,
+    total, cashReceived, balance, mergedRef,
+  };
 }
 
-function printCustomerInvoice() {
+
+async function printCustomerInvoice() {
   const billDisplay = document.getElementById('bill-display');
   if(!billDisplay || !currentBillKey){
     toast('Please generate a bill first','error'); return;
   }
 
-  const htmlContent = buildReceiptHtml(true); // true = Customer Invoice
-  if (!htmlContent) {
+  const billData = computeCurrentBillData();
+  if (!billData) {
     toast('No bill items to print', 'error');
     return;
   }
 
-  const printerDevice = localStorage.getItem('hfc_printer_device') || '';
-  const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
-
-  if (window.api && window.api.printReceipt) {
-    toast('Printing Customer Invoice...', 'info');
-    window.api.printReceipt(htmlContent, {
-      silent: silentPrint,
-      deviceName: printerDevice || undefined
-    }).then(res => {
-      toast('Customer Invoice printed ✓');
-    }).catch(() => {
-      fallbackPrintWindow(htmlContent, false);
-    });
-  } else {
-    fallbackPrintWindow(htmlContent, false);
-  }
+  await printCustomerBill({ ...billData, isInvoice: true });
 }
 
 // ── DATABASE BACKUP ──
@@ -3699,133 +3386,140 @@ async function performDbBackup() {
 }
 
 // ── PRINTER SETTINGS MODAL ──
-async function getAvailablePrinters() {
-  if (window.api && window.api.getPrinters) {
-    try {
-      const p = await window.api.getPrinters();
-      if (p && p.length > 0) return p;
-    } catch (e) { console.warn('api.getPrinters error:', e); }
-  }
-  try {
-    const res = await fetch('/api/printers');
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data)) return data;
-    }
-  } catch (e) {}
-  return [];
+// ══════════════════════════════════════════════════════
+// ⚡ PRINTER SETTINGS — network ESC/POS Kitchen & Billing printers
+// ══════════════════════════════════════════════════════
+// Configured once, here, by the admin. Saving pushes printerConfig through
+// every sync channel this app already has (local SQLite via IPC, the
+// backend API, and Supabase) so every other device picks it up automatically
+// — nobody else ever needs to open this screen or know a printer's IP.
+function openPrinterSettings() {
+  showModal(renderPrinterSettingsModal());
 }
 
-async function openPrinterSettings() {
-  showModal(`
-    <h3>🖨 Dual Receipt Printer Settings</h3>
-    <p style="font-size:.82rem;color:var(--text2);margin-bottom:1rem">Scanning connected POS & thermal printers...</p>
-    <div style="text-align:center;padding:2rem;color:var(--gold);font-weight:600">⏳ Scanning USB & Network printers...</div>
-  `);
+function renderPrinterSettingsModal(status) {
+  status = status || {};
+  const k = printerConfig.kitchen || {};
+  const b = printerConfig.billing || {};
 
-  const printers = await getAvailablePrinters();
-  const kitchenDevice = localStorage.getItem('dogar_kitchen_printer') || localStorage.getItem('hfc_printer_device') || '';
-  const billDevice = localStorage.getItem('dogar_bill_printer') || localStorage.getItem('hfc_printer_device') || '';
-  const currentSilent = localStorage.getItem('dogar_silent_print') !== 'false';
-
-  const makeOptions = (selectedName) => {
-    if (printers.length === 0) return '<option value="">-- System Default Printer --</option>';
-    return '<option value="">-- System Default Printer --</option>' + printers.map(p => {
-      const isSel = (p.name === selectedName);
-      const portStr = p.port ? ` [Port: ${p.port}]` : '';
-      const thermalBadge = p.isThermal ? ' 🖨️ Thermal' : '';
-      const defBadge = p.isDefault ? ' ★ System Default' : '';
-      return `<option value="${p.name}" ${isSel ? 'selected' : ''}>${p.name}${portStr}${thermalBadge}${defBadge}</option>`;
-    }).join('');
+  const statusBox = (target) => {
+    const s = status[target];
+    if (!s) return '';
+    const ok = s.success;
+    return `<div style="margin-top:.5rem;padding:.5rem .65rem;border-radius:6px;font-size:.78rem;font-weight:600;background:${ok ? 'rgba(16,185,129,.14)' : 'rgba(239,68,68,.14)'};color:${ok ? 'var(--green)' : 'var(--red)'};border:1px solid ${ok ? 'var(--green)' : 'var(--red)'}">${ok ? '🟢 Connected — test page sent ✓' : `🔴 ${s.error || 'Could not reach printer'}`}</div>`;
   };
 
-  showModal(`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-      <h3 style="margin:0">🖨 Dual Thermal Printer Settings</h3>
-      <button class="btn-sm btn-outline" onclick="openPrinterSettings()">🔄 Rescan Printers</button>
-    </div>
-    <p style="font-size:.82rem;color:var(--text2);margin-bottom:1.25rem">Configure separate thermal printers for Kitchen Orders (KOT) & Counter Bills.</p>
+  return `
+    <h3 style="margin-bottom:.4rem">🖨 Printer Settings</h3>
+    <p style="font-size:.82rem;color:var(--text2);margin-bottom:1.1rem">Configure each WiFi thermal printer's network address once — every PC and mobile Order Taker on this restaurant automatically uses these same two printers, with no per-device setup.</p>
 
     <!-- KITCHEN PRINTER -->
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);padding:1rem;margin-bottom:1rem">
-      <label style="font-size:.85rem;color:var(--gold);font-weight:600;display:block;margin-bottom:.4rem">👨‍🍳 Kitchen Printer (KOT Receipts)</label>
-      <select id="ps-kitchen-select" class="input-field" style="width:100%">
-        ${makeOptions(kitchenDevice)}
-      </select>
-      <span style="font-size:.72rem;color:var(--text3);margin-top:.3rem;display:block">Prints Kitchen Order Tickets when Order Takers click "Send to Kitchen"</span>
+      <label style="font-size:.85rem;color:var(--gold);font-weight:600;display:block;margin-bottom:.5rem">👨‍🍳 Kitchen Printer</label>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:.5rem">
+        <div>
+          <input id="ps-kitchen-ip" class="input-field" style="width:100%" placeholder="192.168.1.50" value="${k.ip || ''}">
+          <div style="font-size:.68rem;color:var(--text3);margin-top:.2rem">IP address</div>
+        </div>
+        <div>
+          <input id="ps-kitchen-port" class="input-field" style="width:100%" type="number" placeholder="9100" value="${k.port || 9100}">
+          <div style="font-size:.68rem;color:var(--text3);margin-top:.2rem">Port</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:.5rem;margin-top:.6rem">
+        <button class="btn-sm btn-outline" style="flex:1" onclick="testPrinterFromSettings('kitchen')">🖨 Print Test Kitchen Receipt</button>
+      </div>
+      <div id="ps-kitchen-status">${statusBox('kitchen')}</div>
     </div>
 
-    <!-- COUNTER BILL PRINTER -->
+    <!-- BILLING PRINTER -->
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);padding:1rem;margin-bottom:1.25rem">
-      <label style="font-size:.85rem;color:var(--gold);font-weight:600;display:block;margin-bottom:.4rem">🧾 Counter / Manager Bill Printer</label>
-      <select id="ps-bill-select" class="input-field" style="width:100%">
-        ${makeOptions(billDevice)}
-      </select>
-      <span style="font-size:.72rem;color:var(--text3);margin-top:.3rem;display:block">Prints final customer receipt at Manager PC when bill is settled</span>
+      <label style="font-size:.85rem;color:var(--gold);font-weight:600;display:block;margin-bottom:.5rem">🧾 Customer / Billing Printer</label>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:.5rem">
+        <div>
+          <input id="ps-billing-ip" class="input-field" style="width:100%" placeholder="192.168.1.51" value="${b.ip || ''}">
+          <div style="font-size:.68rem;color:var(--text3);margin-top:.2rem">IP address</div>
+        </div>
+        <div>
+          <input id="ps-billing-port" class="input-field" style="width:100%" type="number" placeholder="9100" value="${b.port || 9100}">
+          <div style="font-size:.68rem;color:var(--text3);margin-top:.2rem">Port</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:.5rem;margin-top:.6rem">
+        <button class="btn-sm btn-outline" style="flex:1" onclick="testPrinterFromSettings('billing')">🧾 Print Test Customer Bill</button>
+      </div>
+      <div id="ps-billing-status">${statusBox('billing')}</div>
     </div>
 
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);padding:.9rem 1rem;margin-bottom:1.25rem;display:flex;align-items:center;justify-content:space-between">
-      <div>
-        <div style="font-weight:600;font-size:.9rem;color:var(--text1)">⚡ Direct 1-Click Silent Printing</div>
-        <div style="font-size:.75rem;color:var(--text2);margin-top:.2rem">Bypass print dialogs and print directly to thermal printers</div>
-      </div>
-      <input type="checkbox" id="ps-silent-toggle" ${currentSilent ? 'checked' : ''} style="width:20px;height:20px;accent-color:var(--gold);cursor:pointer">
+    <p style="font-size:.7rem;color:var(--text3);margin-bottom:1rem">Both printers must be on the same WiFi network as this PC, with a static/reserved IP. Standard raw-text printers use port 9100.</p>
+
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="savePrinterSettings()">💾 Save Settings</button>
     </div>
-
-    <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center">
-      <div style="display:flex;gap:.4rem">
-        <button class="btn-outline" onclick="testDualPrint('kitchen')" style="font-size:.78rem">🖨 Test Kitchen</button>
-        <button class="btn-outline" onclick="testDualPrint('bill')" style="font-size:.78rem">🧾 Test Counter</button>
-      </div>
-      <div style="display:flex;gap:.5rem">
-        <button class="btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn-primary" onclick="saveDualPrinterSettings()">Save Printer Settings</button>
-      </div>
-    </div>
-  `);
+  `;
 }
 
-function saveDualPrinterSettings() {
-  const kitchenSel = document.getElementById('ps-kitchen-select')?.value || '';
-  const billSel = document.getElementById('ps-bill-select')?.value || '';
-  const silent = document.getElementById('ps-silent-toggle')?.checked ?? true;
+async function testPrinterFromSettings(target) {
+  // Test whatever is currently typed in the boxes, not necessarily what was
+  // last saved — so the admin can verify an IP before committing to it.
+  const ip = document.getElementById(`ps-${target}-ip`)?.value.trim();
+  const port = parseInt(document.getElementById(`ps-${target}-port`)?.value, 10) || 9100;
+  if (!ip) { toast('Enter an IP address first', 'error'); return; }
 
-  localStorage.setItem('dogar_kitchen_printer', kitchenSel);
-  localStorage.setItem('dogar_bill_printer', billSel);
-  localStorage.setItem('dogar_silent_print', silent ? 'true' : 'false');
-  closeModal();
-  toast('Dual thermal printer configuration saved! ✓', 'success');
-}
+  const statusEl = document.getElementById(`ps-${target}-status`);
+  if (statusEl) statusEl.innerHTML = `<div style="margin-top:.5rem;font-size:.78rem;color:var(--text2)">⏳ Sending test print to ${ip}:${port}...</div>`;
 
-async function testDualPrint(target) {
-  const kitchenSel = document.getElementById('ps-kitchen-select')?.value || localStorage.getItem('dogar_kitchen_printer') || '';
-  const billSel = document.getElementById('ps-bill-select')?.value || localStorage.getItem('dogar_bill_printer') || '';
-  const silent = document.getElementById('ps-silent-toggle')?.checked || false;
+  // Save just this printer's address first so the test actually exercises
+  // the same server-side config the real print jobs will use, then test.
+  const prevConfig = JSON.parse(JSON.stringify(printerConfig));
+  printerConfig[target] = { ip, port };
+  await pushPrinterConfig();
 
-  const targetPrinter = (target === 'kitchen') ? kitchenSel : billSel;
-  const label = (target === 'kitchen') ? 'KITCHEN PRINTER TEST' : 'COUNTER BILL PRINTER TEST';
-  const testHtml = `<!DOCTYPE html><html><head><style>@page { size: 80mm portrait; margin: 0; } body{font-family:monospace;padding:15px;text-align:center}</style></head><body><h2>Dogar Sajji & Restaurant</h2><h3>*** ${label} ***</h3><p>${new Date().toLocaleString()}</p></body></html>`;
-
-  toast(`Sending test print to ${target} printer...`, 'info');
-  await sendPrintJob(testHtml, targetPrinter, silent);
-}
-
-async function sendPrintJob(htmlContent, deviceName, silent = true) {
-  if (window.api && window.api.printReceipt) {
-    try {
-      const res = await window.api.printReceipt(htmlContent, { silent, deviceName });
-      return res && res.success;
-    } catch(e) {
-      fallbackPrintWindow(htmlContent);
-      return true;
-    }
-  } else {
-    // Web / Mobile Mode (Send to Central Node Server over Wi-Fi)
-    const res = await apiPost('/api/print', { html: htmlContent, deviceName });
-    if (res && res.success) return true;
-    fallbackPrintWindow(htmlContent);
-    return true;
+  const result = await testPrinterConnection(target);
+  if (statusEl) {
+    statusEl.innerHTML = result.success
+      ? `<div style="margin-top:.5rem;padding:.5rem .65rem;border-radius:6px;font-size:.78rem;font-weight:600;background:rgba(16,185,129,.14);color:var(--green);border:1px solid var(--green)">🟢 Connected — test page sent ✓</div>`
+      : `<div style="margin-top:.5rem;padding:.5rem .65rem;border-radius:6px;font-size:.78rem;font-weight:600;background:rgba(239,68,68,.14);color:var(--red);border:1px solid var(--red)">🔴 ${result.error || 'Could not reach printer'}</div>`;
   }
+  if (!result.success) {
+    // Don't leave a broken address saved if the test failed and the admin
+    // then cancels instead of fixing it.
+    printerConfig = prevConfig;
+  }
+}
+
+async function savePrinterSettings() {
+  const kitchenIp = document.getElementById('ps-kitchen-ip')?.value.trim() || '';
+  const kitchenPort = parseInt(document.getElementById('ps-kitchen-port')?.value, 10) || 9100;
+  const billingIp = document.getElementById('ps-billing-ip')?.value.trim() || '';
+  const billingPort = parseInt(document.getElementById('ps-billing-port')?.value, 10) || 9100;
+
+  printerConfig = {
+    kitchen: { ip: kitchenIp, port: kitchenPort },
+    billing: { ip: billingIp, port: billingPort },
+  };
+  await pushPrinterConfig();
+  closeModal();
+  toast('Printer settings saved — all devices will use these printers ✓', 'success');
+}
+
+// Pushes printerConfig through every channel this app already syncs settings
+// through, so it's "central" in the same sense everything else here is:
+// this PC's own print agent (server.js) picks it up immediately from its
+// local SQLite, and every other device pulls it from Supabase on their next
+// sync without ever needing to visit this screen themselves.
+async function pushPrinterConfig() {
+  try {
+    if (window.api && window.api.saveSettings) await window.api.saveSettings({ printerConfig });
+  } catch (e) {}
+  try {
+    await apiCall('settings', 'POST', { printerConfig });
+  } catch (e) {}
+  try {
+    if (!supabaseClient) initSupabaseFromStorage();
+    if (supabaseClient) await supabaseClient.from('settings').upsert([{ key: 'printerConfig', value: printerConfig }]);
+  } catch (e) {}
 }
 
 
@@ -3927,7 +3621,7 @@ function downloadCSVFallback(content, fileName) {
   toast('CSV exported successfully ✓');
 }
 
-function printBill(){
+async function printBill(){
   const billDisplay = document.getElementById('bill-display');
   if(!billDisplay || !currentBillKey){
     toast('Please generate a bill first','error'); return;
@@ -3944,31 +3638,16 @@ function printBill(){
     }
   }
 
-  const htmlContent = buildReceiptHtml(false); // false = Final Sales Receipt
-  if (!htmlContent) {
+  const billData = computeCurrentBillData();
+  if (!billData) {
     toast('No bill to print','error'); return;
   }
 
-  const printerDevice = localStorage.getItem('hfc_printer_device') || '';
-  const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
-
-  if (window.api && window.api.printReceipt) {
-    toast('Printing final receipt & settling...', 'info');
-    window.api.printReceipt(htmlContent, {
-      silent: silentPrint,
-      deviceName: printerDevice || undefined
-    }).then(res => {
-      if (res && res.success) {
-        toast('Final receipt printed ✓');
-      } else {
-        toast('Thermal print completed ✓');
-      }
-    }).catch(() => {
-      fallbackPrintWindow(htmlContent, false);
-    });
-  } else {
-    fallbackPrintWindow(htmlContent, false);
-  }
+  // Printing is best-effort: a printer outage shouldn't be able to trap a
+  // sale in limbo. If it fails, printCustomerBill() already surfaces a
+  // clear toast naming the problem — settling still proceeds so staff can
+  // hand-write the total and reprint separately once the printer is back.
+  await printCustomerBill({ ...billData, isInvoice: false });
 
   finalizeSale();
 }
@@ -6717,6 +6396,7 @@ async function loadFromLocal() {
           if (settings.supabaseConfig.url) window.SUPABASE_URL = settings.supabaseConfig.url;
           if (settings.supabaseConfig.key) window.SUPABASE_KEY = settings.supabaseConfig.key;
         }
+        if (settings && settings.printerConfig) printerConfig = { ...printerConfig, ...settings.printerConfig };
 
         console.log('✅ Loaded data from SQLite database ✓');
         loadedFromCentral = true;
@@ -6750,6 +6430,7 @@ async function loadFromLocal() {
           if (d.settings.supabaseConfig.url) window.SUPABASE_URL = d.settings.supabaseConfig.url;
           if (d.settings.supabaseConfig.key) window.SUPABASE_KEY = d.settings.supabaseConfig.key;
         }
+        if (d.settings && d.settings.printerConfig) printerConfig = { ...printerConfig, ...d.settings.printerConfig };
 
         console.log('✅ Loaded data from Central Backend Database ✓');
         loadedFromCentral = true;
@@ -6964,6 +6645,15 @@ async function loadFromLocal() {
           const pSetting = cloudSettings.find(s => s.key === 'nextPettyId');
           if (pSetting && pSetting.value && pSetting.value.nextPettyId) {
             nextPettyId = pSetting.value.nextPettyId;
+          }
+          const printerSetting = cloudSettings.find(s => s.key === 'printerConfig');
+          if (printerSetting && printerSetting.value) {
+            printerConfig = { ...printerConfig, ...printerSetting.value };
+            // Keep this PC's own local print-agent (server.js) in sync too,
+            // since it reads printerConfig straight from its own SQLite —
+            // not from Supabase — when actually routing a print job.
+            if (window.api && window.api.saveSettings) window.api.saveSettings({ printerConfig }).catch(() => {});
+            apiCall('settings', 'POST', { printerConfig }).catch(() => {});
           }
         }
 

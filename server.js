@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const database = require('./database');
+const printer = require('./printer');
 
 const DEFAULT_PORT = 4850;
 
@@ -181,6 +182,70 @@ async function handleApiRequest(req, res, urlPath) {
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ success: true, message: 'Print command processed' }));
+    }
+
+    // ── ESC/POS NETWORK THERMAL PRINTING (Kitchen & Billing printers) ──
+    // These are the only two routes that talk to the physical WiFi POS-80
+    // printers. The printer's IP/port is read here, from this server's own
+    // shared settings — never from the request body — so which printer a
+    // job goes to can never depend on a client's (possibly stale) config.
+    // This is what lets a mobile browser "print" at all: it can't open a
+    // raw TCP socket itself, so it POSTs structured order/bill data here and
+    // this process (already running on the counter PC, on the same WiFi as
+    // both printers) does the actual ESC/POS send on its behalf.
+    if (urlPath === '/api/print/kitchen' && req.method === 'POST') {
+      const body = await parseJsonBody(req);
+      const cfg = (database.getSettings().printerConfig || {}).kitchen || {};
+      if (!cfg.ip) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: 'Kitchen printer is not configured yet — open Printer Settings and set its IP address.' }));
+      }
+      try {
+        const buffer = printer.buildKitchenTicket(body);
+        const result = await printer.printToTarget('kitchen', cfg.ip, cfg.port, buffer, body.jobId);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, duplicate: result.duplicate }));
+      } catch (err) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    }
+
+    if (urlPath === '/api/print/billing' && req.method === 'POST') {
+      const body = await parseJsonBody(req);
+      const cfg = (database.getSettings().printerConfig || {}).billing || {};
+      if (!cfg.ip) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: 'Billing printer is not configured yet — open Printer Settings and set its IP address.' }));
+      }
+      try {
+        const buffer = printer.buildCustomerBill(body);
+        const result = await printer.printToTarget('billing', cfg.ip, cfg.port, buffer, body.jobId);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, duplicate: result.duplicate }));
+      } catch (err) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    }
+
+    if (urlPath === '/api/print/test' && req.method === 'POST') {
+      const body = await parseJsonBody(req);
+      const target = body.target === 'billing' ? 'billing' : 'kitchen';
+      const cfg = (database.getSettings().printerConfig || {})[target] || {};
+      if (!cfg.ip) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: `${target === 'kitchen' ? 'Kitchen' : 'Billing'} printer is not configured yet — enter its IP address first.` }));
+      }
+      try {
+        const buffer = printer.buildTestPage(target === 'kitchen' ? 'KITCHEN PRINTER TEST' : 'BILLING PRINTER TEST');
+        const result = await printer.printToTarget(target, cfg.ip, cfg.port, buffer, body.jobId);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, duplicate: result.duplicate }));
+      } catch (err) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
     }
 
     // ── Specific Entity Handlers ──
