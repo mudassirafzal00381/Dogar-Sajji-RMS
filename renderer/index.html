@@ -2133,7 +2133,17 @@ async function submitOrder(){
   ordersView = (currentRole === 'Order Taker') ? 'new' : 'board';
   showSection('orders');
 }
-function holdOrder(){toast('Order held. You can resume later.');}
+async function refreshManagerOrders() {
+  if (typeof toast === 'function') toast('↻ Syncing orders with Cloud...', 'info');
+  await loadFromLocal();
+  if (typeof renderOrders === 'function') {
+    const content = document.getElementById('content');
+    if (content && activeSection === 'orders') {
+      content.innerHTML = renderOrders();
+      if (typeof addSectionListeners === 'function') addSectionListeners('orders');
+    }
+  }
+}
 
 // ── MANAGER ──
 function renderManager(){
@@ -5982,10 +5992,6 @@ async function saveToLocal(force = false) {
           variants: Array.isArray(m.variants) ? m.variants : []
         }));
         saveTasks.push(supabaseClient.from('menu_items').upsert(menuRecords));
-        const activeIds = menuItems.map(m => Number(m.id)).filter(id => !isNaN(id));
-        if (activeIds.length > 0) {
-          saveTasks.push(supabaseClient.from('menu_items').delete().not('id', 'in', `(${activeIds.join(',')})`));
-        }
       }
 
       // 3.3 Deals
@@ -5999,10 +6005,6 @@ async function saveToLocal(force = false) {
           available: d.available !== false
         }));
         saveTasks.push(supabaseClient.from('deals').upsert(dealRecords));
-        const activeDealIds = deals.map(d => Number(d.id)).filter(id => !isNaN(id));
-        if (activeDealIds.length > 0) {
-          saveTasks.push(supabaseClient.from('deals').delete().not('id', 'in', `(${activeDealIds.join(',')})`));
-        }
       }
 
       // 3.4 Tables
@@ -6016,10 +6018,6 @@ async function saveToLocal(force = false) {
           reserved_time: t.reservedTime || t.reserved_time || '',
         }));
         saveTasks.push(supabaseClient.from('tables').upsert(tableRecords));
-        const activeTableIds = tables.map(t => Number(t.id)).filter(id => !isNaN(id));
-        if (activeTableIds.length > 0) {
-          saveTasks.push(supabaseClient.from('tables').delete().not('id', 'in', `(${activeTableIds.join(',')})`));
-        }
       }
 
       // 3.5 Orders
@@ -6040,9 +6038,6 @@ async function saveToLocal(force = false) {
           customer_address: o.customerAddress || o.customer_address || '',
         }));
         saveTasks.push(supabaseClient.from('orders').upsert(orderRecords));
-        saveTasks.push(supabaseClient.from('orders').delete().not('id', 'in', `(${activeOrderIds.map(id => `"${id}"`).join(',')})`));
-      } else {
-        saveTasks.push(supabaseClient.from('orders').delete().neq('id', '___NONE___'));
       }
 
       // 3.6 Unpaid Bills
@@ -6056,9 +6051,6 @@ async function saveToLocal(force = false) {
           add_on_tickets: Number(unpaidBills[key].addOnTickets || 0),
         }));
         saveTasks.push(supabaseClient.from('unpaid_bills').upsert(billRecords));
-        saveTasks.push(supabaseClient.from('unpaid_bills').delete().not('bill_key', 'in', `(${activeBillKeys.map(k => `"${k}"`).join(',')})`));
-      } else {
-        saveTasks.push(supabaseClient.from('unpaid_bills').delete().neq('bill_key', '___NONE___'));
       }
 
       // 3.7 Inventory
@@ -6073,12 +6065,6 @@ async function saveToLocal(force = false) {
           last: i.last || ''
         }));
         saveTasks.push(supabaseClient.from('inventory').upsert(invRecords));
-        const activeInvIds = inventory.map(i => Number(i.id)).filter(id => !isNaN(id));
-        if (activeInvIds.length > 0) {
-          saveTasks.push(supabaseClient.from('inventory').delete().not('id', 'in', `(${activeInvIds.join(',')})`));
-        }
-      } else {
-        saveTasks.push(supabaseClient.from('inventory').delete().gte('id', 0));
       }
 
       // 3.8 Employees
@@ -6097,12 +6083,6 @@ async function saveToLocal(force = false) {
           attendance_log: Array.isArray(e.attendanceLog) ? e.attendanceLog : (Array.isArray(e.attendance_log) ? e.attendance_log : [])
         }));
         saveTasks.push(supabaseClient.from('employees').upsert(empRecords));
-        const activeEmpIds = employees.map(e => Number(e.id)).filter(id => !isNaN(id));
-        if (activeEmpIds.length > 0) {
-          saveTasks.push(supabaseClient.from('employees').delete().not('id', 'in', `(${activeEmpIds.join(',')})`));
-        }
-      } else {
-        saveTasks.push(supabaseClient.from('employees').delete().gte('id', 0));
       }
 
       // 3.9 Petty Cash
@@ -6118,12 +6098,6 @@ async function saveToLocal(force = false) {
           closeout_id: p.closeoutId || p.closeout_id || ''
         }));
         saveTasks.push(supabaseClient.from('petty_cash').upsert(pcRecords));
-        const activePcIds = pettyCash.map(p => Number(p.id)).filter(id => !isNaN(id));
-        if (activePcIds.length > 0) {
-          saveTasks.push(supabaseClient.from('petty_cash').delete().not('id', 'in', `(${activePcIds.join(',')})`));
-        }
-      } else {
-        saveTasks.push(supabaseClient.from('petty_cash').delete().gte('id', 0));
       }
 
       // 3.10 Sales Ledger
