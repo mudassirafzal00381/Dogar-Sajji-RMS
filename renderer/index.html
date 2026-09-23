@@ -3136,78 +3136,72 @@ function renderBilling(){
 // shared between the (legacy) inline render and the Generate Bill popup.
 function renderPaymentOptionsFields(){
   return `
-    <label style="font-size:.75rem; color:var(--text2); display:block; margin-bottom:.4rem; text-transform:uppercase; letter-spacing:.5px; font-weight:600">
+    <label style="font-size:.65rem; color:var(--text2); display:block; margin-bottom:.25rem; text-transform:uppercase; letter-spacing:.5px; font-weight:600">
       Payment Method
     </label>
-    <div style="display:flex; gap:.5rem; margin-bottom:.8rem" id="pay-method-btns">
+    <div style="display:flex; gap:.4rem; margin-bottom:.5rem" id="pay-method-btns">
       ${['Cash','Online Payment'].map(m => {
         const isSel = (billingState.paymentMethod === m || (m === 'Cash' && billingState.paymentMethod !== 'Online Payment'));
         const icon = m === 'Cash' ? '💵' : '📲';
-        return `<button type="button" class="btn-sm" data-method="${m}" style="flex:1; padding:.65rem .75rem; font-size:.95rem; border:1.5px solid ${isSel ? 'var(--gold)' : 'var(--border)'}; background:${isSel ? 'rgba(201,168,76,0.2)' : 'var(--surface2)'}; color:${isSel ? 'var(--gold)' : 'var(--text1)'}; font-weight:${isSel ? '700' : '600'}; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:.4rem" onclick="selectPayment('${m}')">${isSel ? '✓ ' : ''}${icon} ${m}</button>`;
+        return `<button type="button" class="btn-sm" data-method="${m}" style="flex:1; padding:.4rem .5rem; font-size:.8rem; border:1.5px solid ${isSel ? 'var(--gold)' : 'var(--border)'}; background:${isSel ? 'rgba(201,168,76,0.2)' : 'var(--surface2)'}; color:${isSel ? 'var(--gold)' : 'var(--text1)'}; font-weight:${isSel ? '700' : '600'}; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:.3rem" onclick="selectPayment('${m}')">${isSel ? '✓ ' : ''}${icon} ${m}</button>`;
       }).join('')}
     </div>
     <div id="selected-payment" style="display:none"></div>
 
     <!-- Delivery Charges (Quick Action Buttons) -->
-    <div style="margin-top:.85rem; padding-top:.85rem; border-top:1px dashed var(--border)">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.4rem">
-        <label style="font-size:.75rem; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; font-weight:600">
-          🛵 Delivery Charges (Rs)
+    <div style="margin-top:.5rem; padding-top:.5rem; border-top:1px dashed var(--border)">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.25rem; flex-wrap:wrap; gap:.25rem">
+        <label style="font-size:.65rem; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; font-weight:600">
+          🛵 Delivery (Rs)
         </label>
-        <div style="display:flex; gap:.25rem">
+        <div style="display:flex; gap:.2rem">
           ${[0, 50, 100, 150, 200].map(amt => `
-            <button type="button" class="btn-xs" style="background:var(--surface2); border:1px solid var(--border); color:var(--text2); font-size:.7rem; padding:2px 6px; border-radius:4px; cursor:pointer" onclick="setQuickDeliveryCharge(${amt})">${amt === 0 ? 'Clear' : '+'+amt}</button>
+            <button type="button" class="btn-xs" style="background:var(--surface2); border:1px solid var(--border); color:var(--text2); font-size:.62rem; padding:1px 5px; border-radius:4px; cursor:pointer" onclick="setQuickDeliveryCharge(${amt})">${amt === 0 ? 'Clear' : '+'+amt}</button>
           `).join('')}
         </div>
       </div>
-      <input class="input-field" style="width:100%; font-size:1rem; font-weight:600" type="number" id="delivery-charge" placeholder="0" value="${billingState.deliveryCharge || 0}" min="0" oninput="syncBillingStateFromUI(); updateLiveBill();">
+      <input class="input-field" style="width:100%; font-size:.85rem; font-weight:600; padding:.4rem .6rem" type="number" id="delivery-charge" placeholder="0" value="${billingState.deliveryCharge || 0}" min="0" oninput="syncBillingStateFromUI(); updateLiveBill();">
     </div>
 
     <!-- Discount (% or flat Rs — toggle in renderDiscountBlock) -->
-    <div id="discount-block" style="margin-top:.85rem; padding-top:.85rem; border-top:1px dashed var(--border)">
+    <div id="discount-block" style="margin-top:.5rem; padding-top:.5rem; border-top:1px dashed var(--border)">
       ${renderDiscountBlock()}
     </div>
 
     <!-- Per Head Charges -->
-    <div style="margin-top:.85rem; padding-top:.85rem; border-top:1px dashed var(--border)">
-      <label style="font-size:.75rem; color:var(--text2); display:block; margin-bottom:.4rem; text-transform:uppercase; letter-spacing:.5px; font-weight:600">
+    <div style="margin-top:.5rem; padding-top:.5rem; border-top:1px dashed var(--border)">
+      <label style="font-size:.65rem; color:var(--text2); display:block; margin-bottom:.25rem; text-transform:uppercase; letter-spacing:.5px; font-weight:600">
         👥 Per Head Charge
       </label>
-      <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:.5rem">
-        <div>
-          <input class="input-field" style="width:100%; font-size:.95rem" type="number" id="per-head-rate" placeholder="Rate (Rs)" value="${billingState.perHeadRate || 0}" min="0" oninput="syncBillingStateFromUI(); updateLiveBill();">
-          <div style="font-size:.68rem; color:var(--text3); margin-top:.2rem">Rate / person</div>
-        </div>
-        <div style="color:var(--text3); font-size:1.1rem; font-weight:700; text-align:center">&times;</div>
-        <div>
-          <input class="input-field" style="width:100%; font-size:.95rem" type="number" id="per-head-persons" placeholder="Persons" value="${billingState.perHeadPersons || 1}" min="1" oninput="syncBillingStateFromUI(); updateLiveBill();">
-          <div style="font-size:.68rem; color:var(--text3); margin-top:.2rem">No. of persons</div>
-        </div>
+      <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:.4rem">
+        <input class="input-field" style="width:100%; font-size:.82rem; padding:.4rem .6rem" type="number" id="per-head-rate" placeholder="Rate (Rs)" value="${billingState.perHeadRate || 0}" min="0" oninput="syncBillingStateFromUI(); updateLiveBill();">
+        <div style="color:var(--text3); font-size:.95rem; font-weight:700; text-align:center">&times;</div>
+        <input class="input-field" style="width:100%; font-size:.82rem; padding:.4rem .6rem" type="number" id="per-head-persons" placeholder="Persons" value="${billingState.perHeadPersons || 1}" min="1" oninput="syncBillingStateFromUI(); updateLiveBill();">
       </div>
-      <div id="per-head-calc" style="margin-top:.5rem; background:rgba(201,168,76,.1); border:1px solid rgba(201,168,76,.3); border-radius:6px; padding:.45rem .75rem; font-size:.82rem; display:none; align-items:center; justify-content:space-between">
+      <div id="per-head-calc" style="margin-top:.3rem; background:rgba(201,168,76,.1); border:1px solid rgba(201,168,76,.3); border-radius:6px; padding:.3rem .6rem; font-size:.72rem; display:none; align-items:center; justify-content:space-between">
         <span style="color:var(--text2)">Per Head Total:</span>
         <span id="per-head-calc-result" style="color:var(--gold); font-weight:700"></span>
       </div>
     </div>
 
     <!-- Cash Received & Return Amount (with Quick Cash Buttons) -->
-    <div style="margin-top:.85rem; padding-top:.85rem; border-top:1px dashed var(--border)">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.4rem">
-        <label style="font-size:.75rem; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; font-weight:600">
+    <div style="margin-top:.5rem; padding-top:.5rem; border-top:1px dashed var(--border)">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.25rem; flex-wrap:wrap; gap:.25rem">
+        <label style="font-size:.65rem; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; font-weight:600">
           💵 Cash Received (Rs)
         </label>
-        <div style="display:flex; gap:.25rem; flex-wrap:wrap">
-          <button type="button" class="btn-xs" style="background:var(--surface2); border:1px solid var(--gold); color:var(--gold); font-size:.7rem; padding:2px 6px; border-radius:4px; font-weight:600; cursor:pointer" onclick="setQuickCashReceived('exact')">Exact Bill</button>
+        <div style="display:flex; gap:.2rem; flex-wrap:wrap">
+          <button type="button" class="btn-xs" style="background:var(--surface2); border:1px solid var(--gold); color:var(--gold); font-size:.62rem; padding:1px 5px; border-radius:4px; font-weight:600; cursor:pointer" onclick="setQuickCashReceived('exact')">Exact</button>
           ${[500, 1000, 2000, 5000].map(amt => `
-            <button type="button" class="btn-xs" style="background:var(--surface2); border:1px solid var(--border); color:var(--text2); font-size:.7rem; padding:2px 6px; border-radius:4px; cursor:pointer" onclick="setQuickCashReceived(${amt})">Rs ${amt}</button>
+            <button type="button" class="btn-xs" style="background:var(--surface2); border:1px solid var(--border); color:var(--text2); font-size:.62rem; padding:1px 5px; border-radius:4px; cursor:pointer" onclick="setQuickCashReceived(${amt})">${amt}</button>
           `).join('')}
         </div>
       </div>
-      <input class="input-field" style="width:100%; font-size:1.1rem; font-weight:700; color:var(--green); letter-spacing:.5px" type="number" id="cash-received" placeholder="e.g. 2000" value="${billingState.cashReceived}" min="0" oninput="syncBillingStateFromUI(); updateLiveBill();">
+      <input class="input-field" style="width:100%; font-size:.9rem; font-weight:700; color:var(--green); letter-spacing:.5px; padding:.4rem .6rem" type="number" id="cash-received" placeholder="e.g. 2000" value="${billingState.cashReceived}" min="0" oninput="syncBillingStateFromUI(); updateLiveBill();">
 
-      <div id="change-return-calc" style="margin-top:.6rem; background:rgba(16,185,129,.14); border:1.5px solid #10B981; border-radius:8px; padding:.65rem .85rem; font-size:.9rem; display:none; align-items:center; justify-content:space-between; box-shadow:0 3px 12px rgba(16,185,129,0.15)">
-        <span style="color:var(--text1); font-weight:700">💰 RETURN TO CUSTOMER:</span>
-        <span id="change-return-calc-result" style="color:#10B981; font-weight:900; font-size:1.25rem"></span>
+      <div id="change-return-calc" style="margin-top:.35rem; background:rgba(16,185,129,.14); border:1.5px solid #10B981; border-radius:8px; padding:.4rem .6rem; font-size:.78rem; display:none; align-items:center; justify-content:space-between">
+        <span style="color:var(--text1); font-weight:700">💰 RETURN:</span>
+        <span id="change-return-calc-result" style="color:#10B981; font-weight:900; font-size:.95rem"></span>
       </div>
     </div>
   `;
@@ -3217,16 +3211,12 @@ function renderPaymentOptionsFields(){
 // with the real itemized preview right after the modal opens.
 function renderBillPreviewPlaceholder(){
   return `
-  <div class="bill-preview" id="bill-display">
-    <div class="bill-header">
-      <img src="${appLogoUrl}" style="height:80px;width:auto;object-fit:contain;margin-bottom:.4rem;display:block;margin-left:auto;margin-right:auto;filter:drop-shadow(0 4px 10px rgba(245,158,11,0.3))" alt="Dogar Sajji & Restaurant Logo">
-      <div class="bill-logo">Dogar Sajji & Restaurant</div>
-      <div style="font-size:.78rem;color:var(--text2);margin-top:.25rem">Taste the Best Sajji in Town</div>
-      <div style="font-size:.72rem;color:var(--text3);margin-top:.1rem">📞 0300-1863406</div>
-      <div style="font-size:.68rem;color:var(--text3);margin-top:.1rem">In Front of Govt Graduate College, Multan Road, Muzaffargarh</div>
-      <div style="font-size:.72rem;color:var(--text3);margin-top:.25rem">${new Date().toLocaleString('en-PK')}</div>
+  <div class="bill-preview" id="bill-display" style="max-width:none;width:100%;margin:0;padding:.75rem .9rem">
+    <div class="bill-header" style="padding-bottom:.4rem;margin-bottom:.4rem">
+      <div class="bill-logo" style="font-size:1.05rem">Dogar Sajji & Restaurant</div>
+      <div style="font-size:.68rem;color:var(--text3);margin-top:.1rem">${new Date().toLocaleString('en-PK')}</div>
     </div>
-    <p style="color:var(--text3);text-align:center;font-size:.85rem;margin:1.5rem 0">Generate a bill to preview</p>
+    <p style="color:var(--text3);text-align:center;font-size:.8rem;margin:1rem 0">Generate a bill to preview</p>
   </div>`;
 }
 
@@ -3234,37 +3224,47 @@ function renderBillPreviewPlaceholder(){
 // a popup that stays open — independent of the page's periodic auto-refresh
 // re-rendering the section behind it — until it's manually closed or the
 // sale is actually settled via printBill()/finalizeSale().
+// Fits everything — payment controls, live bill preview, and the action
+// buttons — on one screen with no modal-level scrolling. Structured as a
+// fixed header + fixed footer with a two-column content area between them;
+// only the two content columns get their own (usually invisible) overflow
+// as a safety net for an unusually long item list, never the popup itself.
 function openBillModal(billKeyRaw, type){
   type = type || 'Dine-in';
   const billKey = (type === 'Dine-in') ? Number(billKeyRaw) : billKeyRaw;
 
   showModal(`
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
-      <h3 style="margin:0">💳 Billing & Payment</h3>
-      <button class="btn-outline" style="padding:.25rem .6rem; font-size:.8rem" onclick="closeBillModal()">✕</button>
-    </div>
-    <div id="bill-modal-options">${renderPaymentOptionsFields()}</div>
-    <div style="margin-top:1rem">${renderBillPreviewPlaceholder()}</div>
-    <div style="display:flex;gap:.5rem;margin-top:1rem;justify-content:center;flex-wrap:wrap">
-      <button type="button" class="btn-outline" style="flex:1; min-width:140px; padding:.85rem; font-size:.92rem; font-weight:700; border:2px solid var(--blue); color:var(--blue); background:rgba(74,144,217,0.12); border-radius:var(--radius2); cursor:pointer;" onclick="printCustomerInvoice()">📄 Customer Invoice</button>
-      <button type="button" class="print-btn" style="flex:1.2; min-width:170px; padding:.85rem; font-size:.92rem; font-weight:700" onclick="printBill()">🖨️ Print Receipt & Settle (Final Bill)</button>
+    <div style="display:flex; flex-direction:column; height:100%; min-height:0">
+      <div style="flex:0 0 auto; display:flex; justify-content:space-between; align-items:center; margin-bottom:.6rem">
+        <h3 style="margin:0; font-size:1.05rem">💳 Billing & Payment</h3>
+        <button class="btn-outline" style="padding:.2rem .55rem; font-size:.75rem" onclick="closeModal()">✕</button>
+      </div>
+      <div style="flex:1 1 auto; min-height:0; display:grid; grid-template-columns:minmax(230px,300px) 1fr; gap:1rem">
+        <div id="bill-modal-options" style="min-height:0; overflow-y:auto; padding-right:.3rem">${renderPaymentOptionsFields()}</div>
+        <div style="min-height:0; overflow-y:auto">${renderBillPreviewPlaceholder()}</div>
+      </div>
+      <div style="flex:0 0 auto; display:flex;gap:.5rem;margin-top:.6rem;justify-content:center;flex-wrap:wrap">
+        <button type="button" class="btn-outline" style="flex:1; min-width:140px; padding:.6rem; font-size:.85rem; font-weight:700; border:2px solid var(--blue); color:var(--blue); background:rgba(74,144,217,0.12); border-radius:var(--radius2); cursor:pointer;" onclick="printCustomerInvoice()">📄 Customer Invoice</button>
+        <button type="button" class="print-btn" style="flex:1.2; min-width:170px; padding:.6rem; font-size:.85rem; font-weight:700" onclick="printBill()">🖨️ Print Receipt & Settle (Final Bill)</button>
+      </div>
     </div>
   `);
-  // Wider than the default 480px modal — this one holds a full payment
-  // form plus an itemized receipt preview. Reset in closeBillModal().
+  // Sized (not just widened) so the whole workflow fits one screen without
+  // scrolling, scaling down gracefully on smaller desktop viewports. Reset
+  // in closeModal() so every other modal in the app keeps its default
+  // 480px sizing.
   const modalBody = document.getElementById('modal-body');
-  if (modalBody) modalBody.style.maxWidth = '640px';
+  if (modalBody) {
+    modalBody.style.width = 'min(980px, 95vw)';
+    modalBody.style.maxWidth = '95vw';
+    modalBody.style.height = 'min(600px, 90vh)';
+    modalBody.style.maxHeight = '90vh';
+    modalBody.style.padding = '1rem 1.25rem';
+    modalBody.style.overflow = 'hidden';
+  }
 
   const ok = generateMergedBill(billKey, type);
-  if (ok === false) closeBillModal();
-}
-
-// Only closes the popup — never finalizes anything. The sale is only ever
-// recorded by finalizeSale(), which runs solely from printBill().
-function closeBillModal(){
-  const modalBody = document.getElementById('modal-body');
-  if (modalBody) modalBody.style.maxWidth = '';
-  closeModal();
+  if (ok === false) closeModal();
 }
 
 // currentBillKey is a table id (number) for Dine-in bills, or an order id
@@ -3331,32 +3331,28 @@ function generateMergedBill(billKey,type,quiet=false){
   const billDisplay = document.getElementById('bill-display');
   if(billDisplay){
     billDisplay.innerHTML=`
-    <div class="bill-header">
-      <img src="${appLogoUrl}" style="height:90px;width:auto;object-fit:contain;margin-bottom:.4rem;filter:drop-shadow(0 4px 10px rgba(255,200,0,0.3))" alt="Dogar Sajji & Restaurant Logo">
-      <div class="bill-logo">Dogar Sajji & Restaurant</div>
-      <div style="font-size:.78rem;color:var(--text2);margin-top:.25rem">Taste the Best Sajji in Town</div>
-      <div style="font-size:.7rem;color:var(--text3);margin-top:.1rem">📞 0300-1863406</div>
-      <div style="font-size:.66rem;color:var(--text3);margin-top:.1rem">In Front of Govt Graduate College, Multan Road, Muzaffargarh</div>
-      <div style="font-size:.72rem;color:var(--text3);margin-top:.25rem">${new Date().toLocaleString('en-PK')}</div>
-      <div style="font-size:.85rem;color:var(--gold);margin-top:.5rem;font-weight:600">${headerLabel} · ${group.length>1?'Merged Bill':'Bill #'+group[0].id}</div>
-      ${type==='Delivery'?`<div style="font-size:.72rem;color:var(--text2);margin-top:.3rem">📞 ${custPhone}${custAddress?' · '+custAddress:''}</div>`:''}
-      ${group.length>1?`<div style="font-size:.7rem;color:var(--blue);margin-top:.2rem">Orders: ${billNums}</div>`:''}
+    <div class="bill-header" style="padding-bottom:.4rem;margin-bottom:.4rem">
+      <div class="bill-logo" style="font-size:1.05rem">Dogar Sajji & Restaurant</div>
+      <div style="font-size:.8rem;color:var(--gold);margin-top:.15rem;font-weight:600">${headerLabel} · ${group.length>1?'Merged Bill':'Bill #'+group[0].id}</div>
+      ${type==='Delivery'?`<div style="font-size:.68rem;color:var(--text2);margin-top:.2rem">📞 ${custPhone}${custAddress?' · '+custAddress:''}</div>`:''}
+      ${group.length>1?`<div style="font-size:.65rem;color:var(--blue);margin-top:.15rem">Orders: ${billNums}</div>`:''}
     </div>
-    ${group.length>1?`<div style="background:rgba(74,144,217,.08);border-radius:4px;padding:.4rem .6rem;margin:.5rem 0;font-size:.72rem;color:var(--blue)">✓ ${group.length} bills merged</div>`:''}
-    ${items.map(i=>`<div class="bill-row"><span>${i.qty}× ${i.name}${i.desc?`<br><small style="color:var(--text2);font-weight:normal">↳ ${i.desc}</small>`:''}</span><span>Rs ${(i.qty*i.price).toLocaleString()}</span></div>`).join('')}
-    <div class="bill-row" style="margin-top:.5rem"><span>Subtotal</span><span>Rs ${sub.toLocaleString()}</span></div>
-    ${discAmt?`<div class="bill-row" style="color:var(--green)"><span>Discount (${discInfo.label})</span><span>−Rs ${discAmt.toLocaleString()}</span></div>`:''}
-    ${perHead?`<div class="bill-row"><span>Per Head (Rs ${perHeadRate.toLocaleString()} &times; ${perHeadPersons} persons)</span><span>Rs ${perHead.toLocaleString()}</span></div>`:''}
-    ${deliveryCharge?`<div class="bill-row" style="color:var(--amber)"><span>Delivery Charges</span><span>+Rs ${deliveryCharge.toLocaleString()}</span></div>`:''}
-    <div class="bill-row total"><span>TOTAL</span><span>Rs ${total.toLocaleString()}</span></div>
+    ${group.length>1?`<div style="background:rgba(74,144,217,.08);border-radius:4px;padding:.25rem .5rem;margin:.35rem 0;font-size:.65rem;color:var(--blue)">✓ ${group.length} bills merged</div>`:''}
+    <div style="max-height:120px;overflow-y:auto">
+      ${items.map(i=>`<div class="bill-row" style="padding:.12rem 0;font-size:.78rem"><span>${i.qty}× ${i.name}${i.desc?`<br><small style="color:var(--text2);font-weight:normal">↳ ${i.desc}</small>`:''}</span><span>Rs ${(i.qty*i.price).toLocaleString()}</span></div>`).join('')}
+    </div>
+    <div class="bill-row" style="margin-top:.3rem;padding:.12rem 0;font-size:.78rem"><span>Subtotal</span><span>Rs ${sub.toLocaleString()}</span></div>
+    ${discAmt?`<div class="bill-row" style="color:var(--green);padding:.12rem 0;font-size:.78rem"><span>Discount (${discInfo.label})</span><span>−Rs ${discAmt.toLocaleString()}</span></div>`:''}
+    ${perHead?`<div class="bill-row" style="padding:.12rem 0;font-size:.78rem"><span>Per Head (Rs ${perHeadRate.toLocaleString()} &times; ${perHeadPersons})</span><span>Rs ${perHead.toLocaleString()}</span></div>`:''}
+    ${deliveryCharge?`<div class="bill-row" style="color:var(--amber);padding:.12rem 0;font-size:.78rem"><span>Delivery Charges</span><span>+Rs ${deliveryCharge.toLocaleString()}</span></div>`:''}
+    <div class="bill-row total" style="font-size:.95rem;padding-top:.3rem;margin-top:.25rem"><span>TOTAL</span><span>Rs ${total.toLocaleString()}</span></div>
     ${cashReceived?`
-      <div class="bill-row" style="margin-top:.5rem;padding-top:.4rem;border-top:1px dashed var(--border)"><span>Cash Received</span><span>Rs ${cashReceived.toLocaleString()}</span></div>
+      <div class="bill-row" style="margin-top:.25rem;padding:.12rem 0;font-size:.78rem;border-top:1px dashed var(--border)"><span>Cash Received</span><span>Rs ${cashReceived.toLocaleString()}</span></div>
       ${balance>=0
-        ? `<div class="bill-row" style="color:var(--green);font-weight:700"><span>Change Return</span><span>Rs ${balance.toLocaleString()}</span></div>`
-        : `<div class="bill-row" style="color:var(--red);font-weight:700"><span>Balance Due</span><span>Rs ${Math.abs(balance).toLocaleString()}</span></div>`
+        ? `<div class="bill-row" style="color:var(--green);font-weight:700;padding:.12rem 0;font-size:.82rem"><span>Change Return</span><span>Rs ${balance.toLocaleString()}</span></div>`
+        : `<div class="bill-row" style="color:var(--red);font-weight:700;padding:.12rem 0;font-size:.82rem"><span>Balance Due</span><span>Rs ${Math.abs(balance).toLocaleString()}</span></div>`
       }
-    `:''}
-    <div style="text-align:center;margin-top:1rem;font-size:.75rem;color:var(--text3)">Thank you for dining with us!<br>Please visit again 🙏<div style="font-size:.68rem;color:var(--text3);margin-top:.4rem;font-weight:600">Developer Contact: 03255775600</div></div>`;
+    `:''}`;
   }
   if(!quiet){
     toast(group.length>1?`${group.length} bills merged & generated ✓`:'Bill generated!');
@@ -4076,7 +4072,7 @@ async function finalizeSale(){
   await saveToLocal();
 
   ordersView = 'board';
-  closeBillModal();
+  closeModal();
   showSection('orders');
   if (typeof renderOrders === 'function') renderOrders();
   if (typeof renderTables === 'function') renderTables();
@@ -5838,7 +5834,22 @@ function showModal(html){
   document.getElementById('modal-body').innerHTML=html;
   document.getElementById('modal').classList.add('open');
 }
-function closeModal(){document.getElementById('modal').classList.remove('open');}
+function closeModal(){
+  document.getElementById('modal').classList.remove('open');
+  // Undo any one-off sizing a specific modal applied (e.g. the wide/tall
+  // Billing & Payment popup) so the next modal opened gets the default
+  // 480px auto-height box, regardless of how this one was dismissed
+  // (✕ button, clicking the overlay, etc. all funnel through here).
+  const modalBody = document.getElementById('modal-body');
+  if (modalBody) {
+    modalBody.style.width = '';
+    modalBody.style.maxWidth = '';
+    modalBody.style.height = '';
+    modalBody.style.maxHeight = '';
+    modalBody.style.padding = '';
+    modalBody.style.overflow = '';
+  }
+}
 document.getElementById('modal').addEventListener('click',e=>{if(e.target===document.getElementById('modal'))closeModal();});
 
 function toast(msg,type='success'){
