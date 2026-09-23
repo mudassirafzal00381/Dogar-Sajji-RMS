@@ -2561,183 +2561,16 @@ function makePrintJobId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-// ── BROWSER PRINT FALLBACKS (Web / Vercel mode or offline thermal printer) ──
-function fallbackBrowserPrintBill(payload) {
-  if (!payload || !payload.items) return;
-  const isInvoice = payload.isInvoice;
-  const now = new Date().toLocaleString('en-PK');
-  const itemsHtml = (payload.items || []).map(i => `
-    <tr>
-      <td style="text-align:left;padding:3px 0;border-bottom:1px dotted #ccc;">
-        <strong>${i.qty}x ${i.name}</strong>${i.desc ? `<br><small style="color:#555">↳ ${i.desc}</small>` : ''}
-      </td>
-      <td style="text-align:right;padding:3px 0;vertical-align:top;border-bottom:1px dotted #ccc;white-space:nowrap;">
-        Rs ${(i.qty * i.price).toLocaleString()}
-      </td>
-    </tr>
-  `).join('');
-
-  const win = window.open('', '_blank', 'width=420,height=650');
-  if (!win) {
-    toast('Pop-up blocked! Please allow pop-ups for browser bill print.', 'error');
-    return;
-  }
-
-  win.document.write(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <title>${isInvoice ? 'Invoice' : 'Receipt'} #${payload.receiptNo || ''}</title>
-      <style>
-        * { box-sizing: border-box; }
-        body { font-family: 'Courier New', Courier, monospace; font-size: 13px; line-height: 1.3; width: 290px; margin: 0 auto; padding: 12px; color: #000; background: #fff; }
-        .center { text-align: center; }
-        .bold { font-weight: bold; }
-        .hr { border-bottom: 1px dashed #000; margin: 8px 0; }
-        .hr-double { border-bottom: 3px double #000; margin: 8px 0; }
-        .flex { display: flex; justify-content: space-between; margin: 2px 0; }
-        table { width: 100%; border-collapse: collapse; margin: 6px 0; }
-        @media print {
-          @page { margin: 0; size: auto; }
-          body { width: 100%; margin: 0; padding: 10px; }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="center bold" style="font-size: 17px; margin-bottom: 2px;">Dogar Sajji & Restaurant</div>
-      <div class="center" style="font-size: 12px;">Taste the Best Sajji in Town</div>
-      <div class="center" style="font-size: 12px;">Ph: 0300-1863406</div>
-      <div class="center" style="font-size: 10px; color: #333;">Govt Graduate College, Multan Road, Muzaffargarh</div>
-      <div class="hr-double"></div>
-      <div class="flex"><span>${isInvoice ? 'Invoice #' : 'Receipt #'}</span><span>${payload.receiptNo || ''}</span></div>
-      <div class="flex"><span>Date:</span><span>${now}</span></div>
-      <div class="flex"><span>Order Type:</span><span>${payload.orderTypeLabel || ''} ${payload.headerLabel ? '- ' + payload.headerLabel : ''}</span></div>
-      <div class="flex"><span>Served By:</span><span>${payload.servedBy || ''}</span></div>
-      ${payload.mergedRef ? `<div style="font-size:11px;"><small>${payload.mergedRef}</small></div>` : ''}
-      ${payload.customerPhone || payload.customerAddress ? `<div class="center" style="font-size:11px;margin-top:2px;"><strong>${payload.customerPhone || ''} ${payload.customerAddress ? '- ' + payload.customerAddress : ''}</strong></div>` : ''}
-      <div class="hr"></div>
-      <div class="center bold" style="font-size:14px;">${isInvoice ? '*** UNPAID INVOICE (ESTIMATE) ***' : 'PAYMENT: ' + (payload.paymentMethod || 'Cash')}</div>
-      <div class="hr"></div>
-      <table>${itemsHtml}</table>
-      <div class="hr"></div>
-      <div class="flex"><span>Subtotal</span><span>Rs ${(payload.sub || 0).toLocaleString()}</span></div>
-      ${payload.discAmt ? `<div class="flex"><span>Discount</span><span>-Rs ${payload.discAmt.toLocaleString()}</span></div>` : ''}
-      ${payload.perHead ? `<div class="flex"><span>Per Head (${payload.perHeadRate} x ${payload.perHeadPersons})</span><span>Rs ${payload.perHead.toLocaleString()}</span></div>` : ''}
-      ${payload.deliveryCharge ? `<div class="flex"><span>Delivery Charge</span><span>+Rs ${payload.deliveryCharge.toLocaleString()}</span></div>` : ''}
-      <div class="hr-double"></div>
-      <div class="flex bold" style="font-size: 16px;"><span>TOTAL</span><span>Rs ${(payload.total || 0).toLocaleString()}</span></div>
-      ${!isInvoice && payload.cashReceived ? `
-        <div class="hr"></div>
-        <div class="flex"><span>Cash Received</span><span>Rs ${payload.cashReceived.toLocaleString()}</span></div>
-        <div class="flex bold" style="font-size:14px;"><span>${payload.balance >= 0 ? 'Change Return' : 'BALANCE DUE'}</span><span>Rs ${Math.abs(payload.balance || 0).toLocaleString()}</span></div>
-      ` : ''}
-      <div class="hr-double"></div>
-      <div class="center" style="margin-top: 10px;">Thank you for dining with us!</div>
-      <div class="center" style="font-size: 11px;">Please visit again</div>
-      <div class="center" style="font-size: 9px; margin-top: 6px; color: #666;">Developer Contact: 03255775600</div>
-      <script>
-        window.onload = function() {
-          window.print();
-          setTimeout(function() { window.close(); }, 500);
-        };
-      </script>
-    </body>
-    </html>
-  `);
-  win.document.close();
-}
-
-function fallbackBrowserPrintKitchen(payload) {
-  if (!payload || !payload.items) return;
-  const now = new Date().toLocaleString('en-PK');
-  const itemsHtml = (payload.items || []).map(i => `
-    <tr>
-      <td style="text-align:left;padding:4px 0;font-size:16px;font-weight:bold;border-bottom:1px dashed #ccc;">
-        ${i.qty}x ${i.name}
-        ${i.desc ? `<br><span style="font-weight:normal;font-size:12px;color:#444;">↳ ${i.desc}</span>` : ''}
-      </td>
-    </tr>
-  `).join('');
-
-  const win = window.open('', '_blank', 'width=420,height=600');
-  if (!win) {
-    toast('Pop-up blocked! Please allow pop-ups for browser print.', 'error');
-    return;
-  }
-
-  const type = payload.orderType || 'Dine-in';
-  const headerTitle = type === 'Dine-in' ? `TABLE ${payload.table}` : String(type).toUpperCase();
-
-  win.document.write(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <title>Kitchen Ticket - ${payload.orderId || ''}</title>
-      <style>
-        * { box-sizing: border-box; }
-        body { font-family: 'Courier New', Courier, monospace; font-size: 13px; line-height: 1.3; width: 290px; margin: 0 auto; padding: 12px; color: #000; background: #fff; }
-        .center { text-align: center; }
-        .bold { font-weight: bold; }
-        .hr { border-bottom: 1px dashed #000; margin: 8px 0; }
-        .hr-double { border-bottom: 3px double #000; margin: 8px 0; }
-        .flex { display: flex; justify-content: space-between; margin: 2px 0; }
-        table { width: 100%; border-collapse: collapse; margin: 6px 0; }
-        @media print {
-          @page { margin: 0; size: auto; }
-          body { width: 100%; margin: 0; padding: 10px; }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="center bold" style="font-size: 16px;">Dogar Sajji & Restaurant</div>
-      <div class="center bold" style="font-size: 14px; margin-top:2px;">*** KITCHEN TICKET ***</div>
-      <div class="center" style="font-size: 11px;">${now}</div>
-      <div class="hr-double"></div>
-      <div class="center bold" style="font-size: 22px; margin: 4px 0;">${headerTitle}</div>
-      <div class="flex"><span>Order: ${payload.orderId || ''}</span><span>${payload.time || ''}</span></div>
-      ${payload.customerPhone || payload.customerAddress ? `<div class="center" style="font-size:11px;">${payload.customerPhone || ''} ${payload.customerAddress ? '- ' + payload.customerAddress : ''}</div>` : ''}
-      ${payload.reason ? `<div class="center bold" style="margin-top:4px;font-size:13px;background:#eee;padding:2px;">[ ${payload.reason.toUpperCase()} ]</div>` : ''}
-      <div class="hr"></div>
-      <table>${itemsHtml}</table>
-      ${payload.note ? `<div class="hr"></div><div class="bold">SPECIAL INSTRUCTIONS:<br><span style="font-weight:normal;">${payload.note}</span></div>` : ''}
-      <div class="hr"></div>
-      <div class="center"><small>Staff: ${payload.waiter || 'Counter'}</small></div>
-      <div class="center" style="font-size:10px;margin-top:6px;">-- End of Ticket --</div>
-      <script>
-        window.onload = function() {
-          window.print();
-          setTimeout(function() { window.close(); }, 500);
-        };
-      </script>
-    </body>
-    </html>
-  `);
-  win.document.close();
-}
-
-function triggerManualBrowserPrint() {
-  const billData = computeCurrentBillData();
-  if (!billData) {
-    toast('No bill items to print', 'error');
-    return;
-  }
-  fallbackBrowserPrintBill({ ...billData, isInvoice: false });
-}
-
 async function printKitchenReceipt(payload) {
   const jobId = payload.jobId || makePrintJobId('kitchen');
   const result = await apiCall('print/kitchen', 'POST', { ...payload, jobId });
   if (!result) {
-    toast('Kitchen thermal printer unreachable — using browser print', 'info');
-    fallbackBrowserPrintKitchen(payload);
-    return { success: true, fallback: true, jobId };
+    toast('Kitchen printer unreachable — check the print service / network connection', 'error');
+    return { success: false, error: 'unreachable', jobId };
   }
   if (!result.success) {
-    toast(`Kitchen printer error: ${result.error || 'unknown error'} — using browser print`, 'warning');
-    fallbackBrowserPrintKitchen(payload);
-    return { success: true, fallback: true, jobId };
+    toast(`Kitchen printer error: ${result.error || 'unknown error'}`, 'error');
+    return { success: false, error: result.error, jobId };
   }
   toast(result.duplicate ? 'Kitchen ticket already sent ✓' : 'Kitchen ticket printed ✓');
   return { success: true, duplicate: !!result.duplicate, jobId };
@@ -2747,14 +2580,12 @@ async function printCustomerBill(payload) {
   const jobId = payload.jobId || makePrintJobId('billing');
   const result = await apiCall('print/billing', 'POST', { ...payload, jobId });
   if (!result) {
-    toast('Thermal printer service unreachable — opening browser print...', 'info');
-    fallbackBrowserPrintBill(payload);
-    return { success: true, fallback: true, jobId };
+    toast('Billing printer unreachable — check the print service / network connection', 'error');
+    return { success: false, error: 'unreachable', jobId };
   }
   if (!result.success) {
-    toast(`Thermal printer: ${result.error || 'unknown error'} — opening browser print...`, 'warning');
-    fallbackBrowserPrintBill(payload);
-    return { success: true, fallback: true, jobId };
+    toast(`Billing printer error: ${result.error || 'unknown error'}`, 'error');
+    return { success: false, error: result.error, jobId };
   }
   toast(result.duplicate ? 'Receipt already sent to printer ✓' : (payload.isInvoice ? 'Customer invoice printed ✓' : 'Receipt printed ✓'));
   return { success: true, duplicate: !!result.duplicate, jobId };
@@ -2768,7 +2599,7 @@ async function printClosingReport(payload) {
   const jobId = payload.jobId || makePrintJobId('closing');
   const result = await apiCall('print/billing', 'POST', { ...payload, docType: 'closing-report', jobId });
   if (!result) {
-    toast('Billing printer unreachable — check print service', 'error');
+    toast('Billing printer unreachable — check the print service / network connection', 'error');
     return { success: false, error: 'unreachable', jobId };
   }
   if (!result.success) {
@@ -3351,9 +3182,8 @@ function openBillModal(billKeyRaw, type){
         <div style="min-height:0; overflow-y:auto">${renderBillPreviewPlaceholder()}</div>
       </div>
       <div style="flex:0 0 auto; display:flex;gap:.5rem;margin-top:.6rem;justify-content:center;flex-wrap:wrap">
-        <button type="button" class="btn-outline" style="flex:1; min-width:130px; padding:.6rem; font-size:.85rem; font-weight:700; border:2px solid var(--blue); color:var(--blue); background:rgba(74,144,217,0.12); border-radius:var(--radius2); cursor:pointer;" onclick="printCustomerInvoice()">📄 Customer Invoice</button>
-        <button type="button" class="btn-outline" style="flex:0.9; min-width:130px; padding:.6rem; font-size:.85rem; font-weight:700; border:2px solid var(--gold); color:var(--gold); background:rgba(201,168,76,0.12); border-radius:var(--radius2); cursor:pointer;" onclick="triggerManualBrowserPrint()">🖨 Browser / PDF</button>
-        <button type="button" class="print-btn" style="flex:1.2; min-width:170px; padding:.6rem; font-size:.85rem; font-weight:700" onclick="printBill()">🖨️ Print Receipt & Settle</button>
+        <button type="button" class="btn-outline" style="flex:1; min-width:140px; padding:.6rem; font-size:.85rem; font-weight:700; border:2px solid var(--blue); color:var(--blue); background:rgba(74,144,217,0.12); border-radius:var(--radius2); cursor:pointer;" onclick="printCustomerInvoice()">📄 Customer Invoice</button>
+        <button type="button" class="print-btn" style="flex:1.2; min-width:170px; padding:.6rem; font-size:.85rem; font-weight:700" onclick="printBill()">🖨️ Print Receipt & Settle (Final Bill)</button>
       </div>
     </div>
   `);
