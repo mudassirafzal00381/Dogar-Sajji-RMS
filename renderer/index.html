@@ -6576,7 +6576,7 @@ async function loadFromLocal() {
           { data: cloudUsers },
           { data: cloudSettings }
         ] = await Promise.all([
-          supabaseClient.from('orders').select('*').neq('status', 'completed').order('created_at', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('orders').select('*').neq('status', 'completed').catch(() => ({ data: null })),
           supabaseClient.from('tables').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
           supabaseClient.from('unpaid_bills').select('*').catch(() => ({ data: null })),
           supabaseClient.from('menu_items').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
@@ -6585,23 +6585,23 @@ async function loadFromLocal() {
           supabaseClient.from('inventory').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
           supabaseClient.from('employees').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
           supabaseClient.from('petty_cash').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-          supabaseClient.from('sales_ledger').select('*').order('created_at', { ascending: true }).catch(() => ({ data: null })),
+          supabaseClient.from('sales_ledger').select('*').catch(() => ({ data: null })),
           supabaseClient.from('expense_ledger').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-          supabaseClient.from('cancelled_orders').select('*').order('created_at', { ascending: false }).catch(() => ({ data: null })),
-          supabaseClient.from('daily_closeouts').select('*').order('timestamp', { ascending: false }).catch(() => ({ data: null })),
+          supabaseClient.from('cancelled_orders').select('*').catch(() => ({ data: null })),
+          supabaseClient.from('daily_closeouts').select('*').catch(() => ({ data: null })),
           supabaseClient.from('app_users').select('*').catch(() => ({ data: null })),
           supabaseClient.from('settings').select('*').catch(() => ({ data: null }))
         ]);
 
-        if (Array.isArray(cloudOrders) && cloudOrders.length > 0) {
+        if (Array.isArray(cloudOrders)) {
           orders = cloudOrders.map(r => ({
-            id: r.id, table: r.table_id != null ? Number(r.table_id) : null, items: r.items || [], status: r.status || 'pending',
-            note: r.note || '', time: r.time || '', waiter: r.waiter || '', isAddOn: !!r.is_add_on, total: Number(r.total || 0),
+            id: r.id, table: r.table_id != null ? Number(r.table_id) : null,
+            items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []),
+            status: r.status || 'pending', note: r.note || '', time: r.time || '',
+            waiter: r.waiter || '', isAddOn: !!r.is_add_on, total: Number(r.total || 0),
             orderType: r.order_type || 'Dine-in', customerPhone: r.customer_phone || '',
             customerAddress: r.customer_address || '',
           }));
-        } else if (orders.length === 0 && Array.isArray(cloudOrders)) {
-          orders = [];
         }
 
         if (Array.isArray(cloudTables) && cloudTables.length > 0) {
