@@ -2561,11 +2561,28 @@ function makePrintJobId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// Printing needs a server.js instance on the SAME LAN as the printers —
+// that only ever exists at localhost (the Electron app) or a private-network
+// address (a browser pointed at the counter PC's own WiFi IP). A public host
+// like a Vercel deployment can never reach a private 192.168.x printer at
+// all, no matter what — so when a print request can't reach any backend at
+// all, this tells the two situations apart and gives the actionable one.
+function unreachablePrintMessage() {
+  const proto = window.location.protocol;
+  const host = window.location.hostname;
+  const isLocal = !proto.startsWith('http')
+    || host === 'localhost' || host === '127.0.0.1'
+    || /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
+  return isLocal
+    ? 'Print service unreachable — make sure the app/server is running on this PC and try again.'
+    : `Printing only works from a device on the restaurant's WiFi — this page is open on a public web link (${host}), which can never reach a printer on your local network. Open the app at your counter PC's local address instead (e.g. http://<that PC's WiFi IP>:4850).`;
+}
+
 async function printKitchenReceipt(payload) {
   const jobId = payload.jobId || makePrintJobId('kitchen');
   const result = await apiCall('print/kitchen', 'POST', { ...payload, jobId });
   if (!result) {
-    toast('Kitchen printer unreachable — check the print service / network connection', 'error');
+    toast(unreachablePrintMessage(), 'error');
     return { success: false, error: 'unreachable', jobId };
   }
   if (!result.success) {
@@ -2580,7 +2597,7 @@ async function printCustomerBill(payload) {
   const jobId = payload.jobId || makePrintJobId('billing');
   const result = await apiCall('print/billing', 'POST', { ...payload, jobId });
   if (!result) {
-    toast('Billing printer unreachable — check the print service / network connection', 'error');
+    toast(unreachablePrintMessage(), 'error');
     return { success: false, error: 'unreachable', jobId };
   }
   if (!result.success) {
@@ -2599,7 +2616,7 @@ async function printClosingReport(payload) {
   const jobId = payload.jobId || makePrintJobId('closing');
   const result = await apiCall('print/billing', 'POST', { ...payload, docType: 'closing-report', jobId });
   if (!result) {
-    toast('Billing printer unreachable — check the print service / network connection', 'error');
+    toast(unreachablePrintMessage(), 'error');
     return { success: false, error: 'unreachable', jobId };
   }
   if (!result.success) {
@@ -2613,7 +2630,7 @@ async function printClosingReport(payload) {
 async function testPrinterConnection(target) {
   const jobId = makePrintJobId('test_' + target);
   const result = await apiCall('print/test', 'POST', { target, jobId });
-  if (!result) return { success: false, error: 'Print service unreachable' };
+  if (!result) return { success: false, error: unreachablePrintMessage() };
   return result;
 }
 
