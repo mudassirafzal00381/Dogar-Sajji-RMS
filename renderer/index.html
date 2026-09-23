@@ -1587,6 +1587,9 @@ async function deleteItem(id){
       if(result && result.ok){ await loadFromServer(); showSection('menu'); toast('Item deleted'); return; }
     }
     menuItems=menuItems.filter(x=>x.id!==id);
+    if (supabaseClient) {
+      try { await supabaseClient.from('menu_items').delete().eq('id', Number(id)); } catch(e) { console.warn('Supabase menu item delete warning:', e); }
+    }
     await saveToLocal();
     showSection('menu');toast('Item deleted (local)');
   }
@@ -1689,6 +1692,9 @@ async function removeTable(id){
   if(confirm(`Remove Table ${id}?`)){
     tables=tables.filter(x=>x.id!==id);
     if(selectedTable===id)selectedTable=null;
+    if (supabaseClient) {
+      try { await supabaseClient.from('tables').delete().eq('id', Number(id)); } catch(e) { console.warn('Supabase table delete warning:', e); }
+    }
     await saveToLocal();
     showSection('menu');toast(`Table ${id} removed`);
   }
@@ -3896,7 +3902,10 @@ async function finalizeSale(){
   const total=Number(Math.max(0, sub-discAmt+perHead+deliveryCharge)||0);
   const changeReturn=cashReceived>=total ? (cashReceived-total) : 0;
 
-  const slId='SL'+String(salesLedger.length+1).padStart(3,'0');
+  // Timestamp+random based (not salesLedger.length) so two devices finalizing a
+  // sale in the same instant can never compute the same id and silently
+  // overwrite each other's sale record on the shared Supabase table.
+  const slId='SL'+Date.now()+Math.floor(Math.random()*1000);
   salesLedger.push({
     id:slId, date:today, table:type==='Dine-in'?Number(billKey):null,
     orderType:type, customerPhone:group[0]?.customerPhone||'', customerAddress:group[0]?.customerAddress||'',
@@ -4142,6 +4151,9 @@ async function deleteStockItem(id){
   if (!confirm(`Are you sure you want to delete "${itemTitle}" from inventory?`)) return;
 
   inventory.splice(idx, 1);
+  if (supabaseClient) {
+    try { await supabaseClient.from('inventory').delete().eq('id', Number(id)); } catch(e) { console.warn('Supabase inventory delete warning:', e); }
+  }
   await saveToLocal();
   showSection('inventory');
   toast(`${itemTitle} deleted from inventory ✓`);
@@ -5471,7 +5483,10 @@ async function addPettyEntry(){
     const result = await apiPost('/api/pettycash', {name, category:cat, amount, entryDate:date, notes});
     if(result && result.ok){ await loadFromServer(); toast(name+' — Rs '+amount.toLocaleString()+' added ✓'); showSection('finance'); return; }
   }
-  pettyCash.unshift({id:nextPettyId++,name,category:cat,amount,date,notes});
+  // Timestamp based (not the shared nextPettyId counter) so two devices adding
+  // an entry at the same time can never compute the same id and silently
+  // overwrite each other's entry on the shared Supabase table.
+  pettyCash.unshift({id:Date.now(),name,category:cat,amount,date,notes});
   await saveToLocal();
   toast(name+' — Rs '+amount.toLocaleString()+' added ✓');
   showSection('finance');
@@ -5537,6 +5552,9 @@ function deletePettyEntry(id){
 
 async function confirmDeletePetty(id){
   pettyCash=pettyCash.filter(x=>x.id!==id);
+  if (supabaseClient) {
+    try { await supabaseClient.from('petty_cash').delete().eq('id', Number(id)); } catch(e) { console.warn('Supabase petty cash delete warning:', e); }
+  }
   await saveToLocal();
   closeModal();showSection('finance');toast('Entry deleted');
 }
@@ -5636,7 +5654,7 @@ async function addNewUserAccount(){
   }
 
   appUsers.push({ username: uname, password: pwd, role: role, name: name });
-  await saveAppUsersLocal();
+  await saveToLocal();
   toast(`User "${uname}" added!`, 'success');
   openManageUsers();
 }
@@ -5647,7 +5665,10 @@ async function deleteUserAccount(uname){
     return;
   }
   appUsers = appUsers.filter(u => u.username.toLowerCase() !== uname.toLowerCase());
-  await saveAppUsersLocal();
+  if (supabaseClient) {
+    try { await supabaseClient.from('app_users').delete().ilike('username', uname); } catch(e) { console.warn('Supabase user delete warning:', e); }
+  }
+  await saveToLocal();
   toast(`User "${uname}" removed`, 'info');
   openManageUsers();
 }
@@ -5695,7 +5716,7 @@ async function saveNewPassword(){
   }
   ADMIN_CREDENTIALS.password = nw;
 
-  await saveAppUsersLocal();
+  await saveToLocal();
 
   closeModal();
   showModal(`
@@ -6590,6 +6611,12 @@ async function loadFromLocal() {
     if (!supabaseClient) initSupabaseFromStorage();
     if (supabaseClient) {
       try {
+        // The Supabase query builder is only "thenable" (has .then) — it is not
+        // a real Promise, so it has no .catch()/.finally() of its own. Chaining
+        // .catch() directly on it throws a synchronous TypeError, which used to
+        // abort this entire cloud read before it even started. Promise.resolve()
+        // adopts the thenable into a real Promise first so .catch() is safe.
+        const safeQuery = (builder) => Promise.resolve(builder).catch(() => ({ data: null }));
         const [
           { data: cloudOrders },
           { data: cloudTables },
@@ -6607,21 +6634,21 @@ async function loadFromLocal() {
           { data: cloudUsers },
           { data: cloudSettings }
         ] = await Promise.all([
-          supabaseClient.from('orders').select('*').neq('status', 'completed').catch(() => ({ data: null })),
-          supabaseClient.from('tables').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-          supabaseClient.from('unpaid_bills').select('*').catch(() => ({ data: null })),
-          supabaseClient.from('menu_items').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-          supabaseClient.from('menu_categories').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-          supabaseClient.from('deals').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-          supabaseClient.from('inventory').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-          supabaseClient.from('employees').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-          supabaseClient.from('petty_cash').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-          supabaseClient.from('sales_ledger').select('*').catch(() => ({ data: null })),
-          supabaseClient.from('expense_ledger').select('*').order('id', { ascending: true }).catch(() => ({ data: null })),
-          supabaseClient.from('cancelled_orders').select('*').catch(() => ({ data: null })),
-          supabaseClient.from('daily_closeouts').select('*').catch(() => ({ data: null })),
-          supabaseClient.from('app_users').select('*').catch(() => ({ data: null })),
-          supabaseClient.from('settings').select('*').catch(() => ({ data: null }))
+          safeQuery(supabaseClient.from('orders').select('*').neq('status', 'completed')),
+          safeQuery(supabaseClient.from('tables').select('*').order('id', { ascending: true })),
+          safeQuery(supabaseClient.from('unpaid_bills').select('*')),
+          safeQuery(supabaseClient.from('menu_items').select('*').order('id', { ascending: true })),
+          safeQuery(supabaseClient.from('menu_categories').select('*').order('id', { ascending: true })),
+          safeQuery(supabaseClient.from('deals').select('*').order('id', { ascending: true })),
+          safeQuery(supabaseClient.from('inventory').select('*').order('id', { ascending: true })),
+          safeQuery(supabaseClient.from('employees').select('*').order('id', { ascending: true })),
+          safeQuery(supabaseClient.from('petty_cash').select('*').order('id', { ascending: true })),
+          safeQuery(supabaseClient.from('sales_ledger').select('*')),
+          safeQuery(supabaseClient.from('expense_ledger').select('*').order('id', { ascending: true })),
+          safeQuery(supabaseClient.from('cancelled_orders').select('*')),
+          safeQuery(supabaseClient.from('daily_closeouts').select('*')),
+          safeQuery(supabaseClient.from('app_users').select('*')),
+          safeQuery(supabaseClient.from('settings').select('*'))
         ]);
 
         if (Array.isArray(cloudOrders)) {
