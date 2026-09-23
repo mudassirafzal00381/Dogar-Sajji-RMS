@@ -1,43 +1,9 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const database = require('./database');
 const { registerIpcHandlers } = require('./ipc');
 const { startServer } = require('./server');
-
-// Detects this PC's own LAN IPv4 address and records it as the print
-// agent's address (server.js — the process that actually talks to the
-// printers — runs inside this same Electron process). This is what lets
-// the address self-heal after a DHCP lease change instead of silently
-// going stale until someone notices printing has broken and manually
-// re-runs ipconfig: every time the desktop app starts, it re-detects and
-// re-saves its current address to the local database. The renderer (which
-// has the Supabase connection this process doesn't) then reconciles that
-// against the shared cloud value shortly after boot — see
-// syncPrintAgentUrlIfChanged() in renderer/index.html.
-function detectAndSaveLanAddress() {
-  try {
-    const nets = os.networkInterfaces();
-    const candidates = [];
-    for (const name of Object.keys(nets)) {
-      for (const net of nets[name] || []) {
-        if (net.family === 'IPv4' && !net.internal) candidates.push(net.address);
-      }
-    }
-    // Prefer a private-network address (what every device on the
-    // restaurant's WiFi would actually use to reach this PC).
-    const isPrivate = (ip) => /^10\./.test(ip) || /^192\.168\./.test(ip) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(ip);
-    const chosen = candidates.find(isPrivate) || candidates[0];
-    if (chosen) {
-      const url = `http://${chosen}:4850`;
-      database.saveSettings({ printAgentUrl: url });
-      console.log(`🌐 Detected LAN address for print agent: ${url}`);
-    }
-  } catch (e) {
-    console.warn('LAN address detection warning:', e);
-  }
-}
 
 // One-time carry-over of the SQLite database from the old "Desi Bites RMS"
 // userData folder into the new "Dogar Sajji" one — the rebrand changes
@@ -133,7 +99,6 @@ app.whenReady().then(() => {
 
   try { migrateUserDataFolderIfNeeded(); } catch(e){ console.warn('UserData migrate:', e); }
   try { database.initDatabase(); } catch(e){ console.warn('DB init warning:', e); }
-  try { detectAndSaveLanAddress(); } catch(e){ console.warn('LAN address detect warning:', e); }
   try { startServer().catch(err => console.warn('Backend server start error:', err)); } catch(e){}
   try { registerIpcHandlers(database); } catch(e){ console.warn('IPC register warning:', e); }
 
