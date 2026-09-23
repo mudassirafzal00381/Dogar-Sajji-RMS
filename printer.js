@@ -1,18 +1,30 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// ⚡ Dogar Sajji — ESC/POS NETWORK THERMAL PRINTING (Kitchen & Billing printers)
+// ⚡ Dogar Sajji — ESC/POS THERMAL PRINTING (Kitchen & Billing printers)
 // ══════════════════════════════════════════════════════════════════════════════
-// Builds raw ESC/POS byte buffers and writes them directly over a TCP socket
-// to the configured WiFi POS-80 printers (standard raw-text port 9100). This
-// module runs inside server.js so every device — including mobile browsers,
-// which can never open a raw TCP socket themselves — prints through the same
-// HTTP call; the Electron desktop app uses the identical path, since it also
-// just calls its own locally-running server.js over localhost. There is no
-// dependency on Windows printer drivers, browser print dialogs, or any
-// per-device setup: the printer's IP/port lives once in the shared settings
-// (see database.js) and every request is routed here by logical target
-// ('kitchen' | 'billing'), never by a client-supplied address.
+// Builds raw ESC/POS byte buffers and delivers them to each printer either:
+//   - over a raw TCP socket ('network' type, standard raw-text port 9100) for
+//     a WiFi/LAN printer any device on the network can reach directly, or
+//   - via the Windows spooler's RAW datatype ('usb' type) for a printer that's
+//     only plugged into this one PC's USB port and has no network address of
+//     its own — bypassing GDI/driver rendering the same way the network path
+//     bypasses the browser print dialog, so exact ESC/POS control bytes (cut,
+//     bold, alignment) still arrive intact either way.
+// This module runs inside server.js so every device — including mobile
+// browsers, which can never open a raw TCP socket or reach a USB port
+// themselves — prints through the same HTTP call; the Electron desktop app
+// uses the identical path, since it also just calls its own locally-running
+// server.js over localhost. There is no per-device setup: each printer's
+// connection details live once in the shared settings (see database.js) and
+// every request is routed here by logical target ('kitchen' | 'billing'),
+// never by a client-supplied address or printer name.
 
 const net = require('net');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { execFile } = require('child_process');
+
+const USB_HELPER_SCRIPT = path.join(__dirname, 'printer-usb-helper.ps1');
 
 const ESC = '\x1B', GS = '\x1D';
 const CMD = {
@@ -314,6 +326,64 @@ function sendRaw(ip, port, buffer, timeoutMs) {
   });
 }
 
+// ── USB (locally-installed Windows printer) sender ──
+// Sends bytes via the Windows spooler's RAW datatype (OpenPrinter/
+// StartDocPrinter/WritePrinter — the standard technique for byte-exact
+// printing through an existing driver/queue) rather than rendering through
+// GDI, so ESC/POS control codes still arrive intact. Only meaningful for a
+// printer plugged into (or otherwise only reachable from) this specific PC.
+function sendToUsbPrinter(printerName, buffer, timeoutMs) {
+  timeoutMs = timeoutMs || 8000;
+  return new Promise((resolve, reject) => {
+    if (!printerName) return reject(new Error('USB printer name is not configured'));
+    if (process.platform !== 'win32') return reject(new Error('USB printing is only supported on Windows'));
+
+    const tmpFile = path.join(os.tmpdir(), `dogar-print-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.bin`);
+    fs.writeFile(tmpFile, buffer, (writeErr) => {
+      if (writeErr) return reject(new Error('Could not prepare print job: ' + writeErr.message));
+
+      execFile('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+        '-File', USB_HELPER_SCRIPT,
+        '-PrinterName', printerName,
+        '-FilePath', tmpFile,
+      ], { timeout: timeoutMs, windowsHide: true }, (err, stdout, stderr) => {
+        fs.unlink(tmpFile, () => {});
+        if (err) {
+          return reject(new Error(err.killed
+            ? `Printer "${printerName}" did not respond in time`
+            : `Could not print to "${printerName}" — ${(stderr || err.message || '').trim() || 'unknown error'}`));
+        }
+        const out = (stdout || '').trim();
+        if (out.startsWith('OK')) return resolve();
+        return reject(new Error(out.replace(/^ERROR:\s*/, '') || `Printer "${printerName}" rejected the job`));
+      });
+    });
+  });
+}
+
+// Lists installed Windows printer names, for the Printer Settings USB
+// dropdown — only used to populate that picker, never for routing a print
+// job (routing always comes from the saved printerConfig, not this list).
+function listWindowsPrinters(timeoutMs) {
+  timeoutMs = timeoutMs || 5000;
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') return resolve([]);
+    execFile('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
+      'Get-Printer | Select-Object -ExpandProperty Name | ConvertTo-Json -Compress',
+    ], { timeout: timeoutMs, windowsHide: true }, (err, stdout) => {
+      if (err || !stdout || !stdout.trim()) return resolve([]);
+      try {
+        const parsed = JSON.parse(stdout.trim());
+        resolve(Array.isArray(parsed) ? parsed : [parsed]);
+      } catch (e) {
+        resolve([]);
+      }
+    });
+  });
+}
+
 // ── Per-target print queue ──
 // Multiple devices can submit jobs for the same printer at once; a cheap
 // thermal printer chokes on overlapping TCP connections, so jobs for a given
@@ -359,14 +429,21 @@ function cleanupJobs() {
   }
 }
 
-async function printToTarget(target, ip, port, buffer, jobId) {
+// cfg is the target's full printer config ({ type, ip, port, printerName }) —
+// branching on cfg.type here, in the one place both connection kinds funnel
+// through, is what guarantees a kitchen job and a billing job can never
+// cross paths regardless of which connection type either one uses.
+async function printToTarget(target, cfg, buffer, jobId) {
   cleanupJobs();
   if (jobId) {
     const rec = seenJobs.get(jobId);
     if (rec && rec.status === 'done') return { duplicate: true };
   }
   try {
-    await enqueue(target, () => sendRaw(ip, port, buffer));
+    const sendFn = (cfg && cfg.type === 'usb')
+      ? () => sendToUsbPrinter(cfg.printerName, buffer)
+      : () => sendRaw(cfg && cfg.ip, cfg && cfg.port, buffer);
+    await enqueue(target, sendFn);
     if (jobId) seenJobs.set(jobId, { status: 'done', at: Date.now() });
     return { duplicate: false };
   } catch (err) {
@@ -381,5 +458,7 @@ module.exports = {
   buildClosingReport,
   buildTestPage,
   sendRaw,
+  sendToUsbPrinter,
+  listWindowsPrinters,
   printToTarget,
 };

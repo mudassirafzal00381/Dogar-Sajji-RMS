@@ -120,25 +120,31 @@ async function handleApiRequest(req, res, urlPath) {
       return;
     }
 
-    // ── ESC/POS NETWORK THERMAL PRINTING (Kitchen & Billing printers) ──
-    // These are the only two routes that talk to the physical WiFi POS-80
-    // printers. The printer's IP/port is read here, from this server's own
-    // shared settings — never from the request body — so which printer a
+    // ── ESC/POS THERMAL PRINTING (Kitchen & Billing printers) ──
+    // These are the only routes that talk to the physical printers. Each
+    // printer's connection details (network IP/port, or a USB printer name
+    // for one only reachable from this PC) are read here, from this server's
+    // own shared settings — never from the request body — so which printer a
     // job goes to can never depend on a client's (possibly stale) config.
-    // This is what lets a mobile browser "print" at all: it can't open a
-    // raw TCP socket itself, so it POSTs structured order/bill data here and
-    // this process (already running on the counter PC, on the same WiFi as
-    // both printers) does the actual ESC/POS send on its behalf.
+    // This is what lets a mobile browser "print" at all: it can't open a raw
+    // TCP socket or reach a USB port itself, so it POSTs structured order/
+    // bill data here and this process (already running on the counter PC)
+    // does the actual send — over the network, or via the Windows spooler's
+    // RAW mode for a USB-only printer — on the client's behalf.
+    function isPrinterConfigured(cfg) {
+      return cfg && (cfg.type === 'usb' ? !!cfg.printerName : !!cfg.ip);
+    }
+
     if (urlPath === '/api/print/kitchen' && req.method === 'POST') {
       const body = await parseJsonBody(req);
       const cfg = (database.getSettings().printerConfig || {}).kitchen || {};
-      if (!cfg.ip) {
+      if (!isPrinterConfigured(cfg)) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ success: false, error: 'Kitchen printer is not configured yet — open Printer Settings and set its IP address.' }));
+        return res.end(JSON.stringify({ success: false, error: 'Kitchen printer is not configured yet — open Printer Settings and set it up.' }));
       }
       try {
         const buffer = printer.buildKitchenTicket(body);
-        const result = await printer.printToTarget('kitchen', cfg.ip, cfg.port, buffer, body.jobId);
+        const result = await printer.printToTarget('kitchen', cfg, buffer, body.jobId);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ success: true, duplicate: result.duplicate }));
       } catch (err) {
@@ -150,9 +156,9 @@ async function handleApiRequest(req, res, urlPath) {
     if (urlPath === '/api/print/billing' && req.method === 'POST') {
       const body = await parseJsonBody(req);
       const cfg = (database.getSettings().printerConfig || {}).billing || {};
-      if (!cfg.ip) {
+      if (!isPrinterConfigured(cfg)) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ success: false, error: 'Billing printer is not configured yet — open Printer Settings and set its IP address.' }));
+        return res.end(JSON.stringify({ success: false, error: 'Billing printer is not configured yet — open Printer Settings and set it up.' }));
       }
       try {
         // docType distinguishes a customer bill/invoice from the day-end
@@ -161,7 +167,7 @@ async function handleApiRequest(req, res, urlPath) {
         const buffer = body.docType === 'closing-report'
           ? printer.buildClosingReport(body)
           : printer.buildCustomerBill(body);
-        const result = await printer.printToTarget('billing', cfg.ip, cfg.port, buffer, body.jobId);
+        const result = await printer.printToTarget('billing', cfg, buffer, body.jobId);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ success: true, duplicate: result.duplicate }));
       } catch (err) {
@@ -174,19 +180,27 @@ async function handleApiRequest(req, res, urlPath) {
       const body = await parseJsonBody(req);
       const target = body.target === 'billing' ? 'billing' : 'kitchen';
       const cfg = (database.getSettings().printerConfig || {})[target] || {};
-      if (!cfg.ip) {
+      if (!isPrinterConfigured(cfg)) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ success: false, error: `${target === 'kitchen' ? 'Kitchen' : 'Billing'} printer is not configured yet — enter its IP address first.` }));
+        return res.end(JSON.stringify({ success: false, error: `${target === 'kitchen' ? 'Kitchen' : 'Billing'} printer is not configured yet — set it up first.` }));
       }
       try {
         const buffer = printer.buildTestPage(target === 'kitchen' ? 'KITCHEN PRINTER TEST' : 'BILLING PRINTER TEST');
-        const result = await printer.printToTarget(target, cfg.ip, cfg.port, buffer, body.jobId);
+        const result = await printer.printToTarget(target, cfg, buffer, body.jobId);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ success: true, duplicate: result.duplicate }));
       } catch (err) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ success: false, error: err.message }));
       }
+    }
+
+    // Populates the USB printer picker in Printer Settings — only ever used
+    // to fill that dropdown, never to decide where an actual print job goes.
+    if (urlPath === '/api/print/local-printers' && req.method === 'GET') {
+      const names = await printer.listWindowsPrinters();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: true, printers: names }));
     }
 
     // ── Specific Entity Handlers ──

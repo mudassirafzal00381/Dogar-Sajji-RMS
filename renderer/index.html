@@ -874,15 +874,17 @@ let pettyCash = [];
 let pettyCashFilter = 'All';
 let nextPettyId = 1;
 
-// ── PRINTER CONFIG (shared network ESC/POS thermal printers) ──
+// ── PRINTER CONFIG (shared ESC/POS thermal printers) ──
 // Configured once by the admin (see openPrinterSettings) and synced through
 // the same settings channel as everything else (SQLite / backend API /
 // Supabase), so every device — including mobile Order Taker terminals —
 // automatically prints kitchen tickets and bills to the same two physical
-// printers without ever being configured per-device.
+// printers without ever being configured per-device. Each printer is either
+// type:'network' (ip+port, reachable from any device on the WiFi) or
+// type:'usb' (printerName, a Windows printer only this PC can reach).
 let printerConfig = {
-  kitchen: { ip: '', port: 9100 },
-  billing: { ip: '', port: 9100 },
+  kitchen: { type: 'network', ip: '', port: 9100, printerName: '' },
+  billing: { type: 'network', ip: '', port: 9100, printerName: '' },
 };
 
 // ── SALES LEDGER (historical completed sales for date-range reporting) ──
@@ -3412,65 +3414,38 @@ async function performDbBackup() {
 // every sync channel this app already has (local SQLite via IPC, the
 // backend API, and Supabase) so every other device picks it up automatically
 // — nobody else ever needs to open this screen or know a printer's IP.
-function openPrinterSettings() {
+async function openPrinterSettings() {
+  // Pre-fetch the installed-printer list if either printer is already set to
+  // USB, so the dropdown shows the saved selection immediately instead of a
+  // "Loading..." placeholder the admin would otherwise have to Rescan past.
+  if (printerConfig.kitchen?.type === 'usb' || printerConfig.billing?.type === 'usb') {
+    await fetchLocalPrinters();
+  }
   showModal(renderPrinterSettingsModal());
+}
+
+// Cached after the first fetch per app session — repopulating the USB
+// dropdown never needs to re-run the PowerShell scan unless explicitly
+// refreshed (Rescan button).
+window._localPrintersCache = null;
+
+async function fetchLocalPrinters(force) {
+  if (window._localPrintersCache && !force) return window._localPrintersCache;
+  const result = await apiCall('print/local-printers');
+  window._localPrintersCache = (result && result.success && Array.isArray(result.printers)) ? result.printers : [];
+  return window._localPrintersCache;
 }
 
 function renderPrinterSettingsModal(status) {
   status = status || {};
-  const k = printerConfig.kitchen || {};
-  const b = printerConfig.billing || {};
-
-  const statusBox = (target) => {
-    const s = status[target];
-    if (!s) return '';
-    const ok = s.success;
-    return `<div style="margin-top:.5rem;padding:.5rem .65rem;border-radius:6px;font-size:.78rem;font-weight:600;background:${ok ? 'rgba(16,185,129,.14)' : 'rgba(239,68,68,.14)'};color:${ok ? 'var(--green)' : 'var(--red)'};border:1px solid ${ok ? 'var(--green)' : 'var(--red)'}">${ok ? '🟢 Connected — test page sent ✓' : `🔴 ${s.error || 'Could not reach printer'}`}</div>`;
-  };
-
   return `
     <h3 style="margin-bottom:.4rem">🖨 Printer Settings</h3>
-    <p style="font-size:.82rem;color:var(--text2);margin-bottom:1.1rem">Configure each WiFi thermal printer's network address once — every PC and mobile Order Taker on this restaurant automatically uses these same two printers, with no per-device setup.</p>
+    <p style="font-size:.82rem;color:var(--text2);margin-bottom:1.1rem">Configure each printer once — every PC and mobile Order Taker automatically uses these same two printers, with no per-device setup. Use "Network" for a printer any device should reach directly over WiFi, or "USB" for one only plugged into this specific PC.</p>
 
-    <!-- KITCHEN PRINTER -->
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);padding:1rem;margin-bottom:1rem">
-      <label style="font-size:.85rem;color:var(--gold);font-weight:600;display:block;margin-bottom:.5rem">👨‍🍳 Kitchen Printer</label>
-      <div style="display:grid;grid-template-columns:2fr 1fr;gap:.5rem">
-        <div>
-          <input id="ps-kitchen-ip" class="input-field" style="width:100%" placeholder="192.168.1.50" value="${k.ip || ''}">
-          <div style="font-size:.68rem;color:var(--text3);margin-top:.2rem">IP address</div>
-        </div>
-        <div>
-          <input id="ps-kitchen-port" class="input-field" style="width:100%" type="number" placeholder="9100" value="${k.port || 9100}">
-          <div style="font-size:.68rem;color:var(--text3);margin-top:.2rem">Port</div>
-        </div>
-      </div>
-      <div style="display:flex;gap:.5rem;margin-top:.6rem">
-        <button class="btn-sm btn-outline" style="flex:1" onclick="testPrinterFromSettings('kitchen')">🖨 Print Test Kitchen Receipt</button>
-      </div>
-      <div id="ps-kitchen-status">${statusBox('kitchen')}</div>
-    </div>
+    <div id="ps-kitchen-block">${renderPrinterBlock('kitchen', '👨‍🍳 Kitchen Printer', status.kitchen)}</div>
+    <div id="ps-billing-block" style="margin-top:1rem">${renderPrinterBlock('billing', '🧾 Customer / Billing Printer', status.billing)}</div>
 
-    <!-- BILLING PRINTER -->
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);padding:1rem;margin-bottom:1.25rem">
-      <label style="font-size:.85rem;color:var(--gold);font-weight:600;display:block;margin-bottom:.5rem">🧾 Customer / Billing Printer</label>
-      <div style="display:grid;grid-template-columns:2fr 1fr;gap:.5rem">
-        <div>
-          <input id="ps-billing-ip" class="input-field" style="width:100%" placeholder="192.168.1.51" value="${b.ip || ''}">
-          <div style="font-size:.68rem;color:var(--text3);margin-top:.2rem">IP address</div>
-        </div>
-        <div>
-          <input id="ps-billing-port" class="input-field" style="width:100%" type="number" placeholder="9100" value="${b.port || 9100}">
-          <div style="font-size:.68rem;color:var(--text3);margin-top:.2rem">Port</div>
-        </div>
-      </div>
-      <div style="display:flex;gap:.5rem;margin-top:.6rem">
-        <button class="btn-sm btn-outline" style="flex:1" onclick="testPrinterFromSettings('billing')">🧾 Print Test Customer Bill</button>
-      </div>
-      <div id="ps-billing-status">${statusBox('billing')}</div>
-    </div>
-
-    <p style="font-size:.7rem;color:var(--text3);margin-bottom:1rem">Both printers must be on the same WiFi network as this PC, with a static/reserved IP. Standard raw-text printers use port 9100.</p>
+    <p style="font-size:.7rem;color:var(--text3);margin:1rem 0">Network printers need a static/reserved IP on the same WiFi (standard raw port is 9100). A USB printer only works from this PC — a mobile device or another PC can never reach it directly.</p>
 
     <div class="modal-footer">
       <button class="btn-outline" onclick="closeModal()">Cancel</button>
@@ -3479,44 +3454,112 @@ function renderPrinterSettingsModal(status) {
   `;
 }
 
+function renderPrinterBlock(target, label, statusEntry) {
+  const cfg = printerConfig[target] || {};
+  const isUsb = cfg.type === 'usb';
+  const statusHtml = renderPrinterStatusBox(statusEntry);
+  const printers = window._localPrintersCache || [];
+
+  return `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);padding:1rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+        <label style="font-size:.85rem;color:var(--gold);font-weight:600">${label}</label>
+        <div style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+          <button type="button" class="btn-xs" style="padding:.2rem .55rem;font-size:.68rem;border:none;cursor:pointer;font-weight:700;background:${!isUsb ? 'var(--gold)' : 'var(--surface)'};color:${!isUsb ? 'var(--dark)' : 'var(--text2)'}" onclick="setPrinterConnectionType('${target}','network')">🌐 Network</button>
+          <button type="button" class="btn-xs" style="padding:.2rem .55rem;font-size:.68rem;border:none;cursor:pointer;font-weight:700;background:${isUsb ? 'var(--gold)' : 'var(--surface)'};color:${isUsb ? 'var(--dark)' : 'var(--text2)'}" onclick="setPrinterConnectionType('${target}','usb')">🔌 USB</button>
+        </div>
+      </div>
+
+      ${isUsb ? `
+        <select id="ps-${target}-printername" class="input-field" style="width:100%">
+          <option value="">${printers.length === 0 ? 'Loading installed printers...' : '-- Select installed printer --'}</option>
+          ${printers.map(p => `<option value="${p}" ${p === cfg.printerName ? 'selected' : ''}>${p}</option>`).join('')}
+        </select>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.3rem">
+          <div style="font-size:.68rem;color:var(--text3)">Windows printer name (only reachable from this PC)</div>
+          <button type="button" class="btn-xs" style="background:var(--surface);border:1px solid var(--border);color:var(--text2);font-size:.65rem;padding:1px 6px;border-radius:4px;cursor:pointer" onclick="refreshLocalPrinters('${target}')">🔄 Rescan</button>
+        </div>
+      ` : `
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:.5rem">
+          <div>
+            <input id="ps-${target}-ip" class="input-field" style="width:100%" placeholder="192.168.1.50" value="${cfg.ip || ''}">
+            <div style="font-size:.68rem;color:var(--text3);margin-top:.2rem">IP address</div>
+          </div>
+          <div>
+            <input id="ps-${target}-port" class="input-field" style="width:100%" type="number" placeholder="9100" value="${cfg.port || 9100}">
+            <div style="font-size:.68rem;color:var(--text3);margin-top:.2rem">Port</div>
+          </div>
+        </div>
+      `}
+
+      <div style="display:flex;gap:.5rem;margin-top:.6rem">
+        <button class="btn-sm btn-outline" style="flex:1" onclick="testPrinterFromSettings('${target}')">${target === 'kitchen' ? '🖨 Print Test Kitchen Receipt' : '🧾 Print Test Customer Bill'}</button>
+      </div>
+      <div id="ps-${target}-status">${statusHtml}</div>
+    </div>
+  `;
+}
+
+function renderPrinterStatusBox(s) {
+  if (!s) return '';
+  const ok = s.success;
+  return `<div style="margin-top:.5rem;padding:.5rem .65rem;border-radius:6px;font-size:.78rem;font-weight:600;background:${ok ? 'rgba(16,185,129,.14)' : 'rgba(239,68,68,.14)'};color:${ok ? 'var(--green)' : 'var(--red)'};border:1px solid ${ok ? 'var(--green)' : 'var(--red)'}">${ok ? '🟢 Connected — test page sent ✓' : `🔴 ${s.error || 'Could not reach printer'}`}</div>`;
+}
+
+async function setPrinterConnectionType(target, type) {
+  printerConfig[target] = { ...printerConfig[target], type };
+  if (type === 'usb') await fetchLocalPrinters();
+  const container = document.getElementById(`ps-${target}-block`);
+  if (container) container.innerHTML = renderPrinterBlock(target, target === 'kitchen' ? '👨‍🍳 Kitchen Printer' : '🧾 Customer / Billing Printer');
+}
+
+async function refreshLocalPrinters(target) {
+  await fetchLocalPrinters(true);
+  const container = document.getElementById(`ps-${target}-block`);
+  if (container) container.innerHTML = renderPrinterBlock(target, target === 'kitchen' ? '👨‍🍳 Kitchen Printer' : '🧾 Customer / Billing Printer');
+}
+
+function readPrinterFormValues(target) {
+  const isUsb = printerConfig[target] && printerConfig[target].type === 'usb';
+  if (isUsb) {
+    return { type: 'usb', printerName: document.getElementById(`ps-${target}-printername`)?.value || '', ip: '', port: 9100 };
+  }
+  return {
+    type: 'network',
+    ip: document.getElementById(`ps-${target}-ip`)?.value.trim() || '',
+    port: parseInt(document.getElementById(`ps-${target}-port`)?.value, 10) || 9100,
+    printerName: '',
+  };
+}
+
 async function testPrinterFromSettings(target) {
-  // Test whatever is currently typed in the boxes, not necessarily what was
-  // last saved — so the admin can verify an IP before committing to it.
-  const ip = document.getElementById(`ps-${target}-ip`)?.value.trim();
-  const port = parseInt(document.getElementById(`ps-${target}-port`)?.value, 10) || 9100;
-  if (!ip) { toast('Enter an IP address first', 'error'); return; }
+  const values = readPrinterFormValues(target);
+  if (values.type === 'usb' && !values.printerName) { toast('Select an installed printer first', 'error'); return; }
+  if (values.type === 'network' && !values.ip) { toast('Enter an IP address first', 'error'); return; }
 
   const statusEl = document.getElementById(`ps-${target}-status`);
-  if (statusEl) statusEl.innerHTML = `<div style="margin-top:.5rem;font-size:.78rem;color:var(--text2)">⏳ Sending test print to ${ip}:${port}...</div>`;
+  const targetDesc = values.type === 'usb' ? values.printerName : `${values.ip}:${values.port}`;
+  if (statusEl) statusEl.innerHTML = `<div style="margin-top:.5rem;font-size:.78rem;color:var(--text2)">⏳ Sending test print to ${targetDesc}...</div>`;
 
-  // Save just this printer's address first so the test actually exercises
+  // Save just this printer's config first so the test actually exercises
   // the same server-side config the real print jobs will use, then test.
   const prevConfig = JSON.parse(JSON.stringify(printerConfig));
-  printerConfig[target] = { ip, port };
+  printerConfig[target] = values;
   await pushPrinterConfig();
 
   const result = await testPrinterConnection(target);
-  if (statusEl) {
-    statusEl.innerHTML = result.success
-      ? `<div style="margin-top:.5rem;padding:.5rem .65rem;border-radius:6px;font-size:.78rem;font-weight:600;background:rgba(16,185,129,.14);color:var(--green);border:1px solid var(--green)">🟢 Connected — test page sent ✓</div>`
-      : `<div style="margin-top:.5rem;padding:.5rem .65rem;border-radius:6px;font-size:.78rem;font-weight:600;background:rgba(239,68,68,.14);color:var(--red);border:1px solid var(--red)">🔴 ${result.error || 'Could not reach printer'}</div>`;
-  }
+  if (statusEl) statusEl.innerHTML = renderPrinterStatusBox(result);
   if (!result.success) {
-    // Don't leave a broken address saved if the test failed and the admin
+    // Don't leave a broken config saved if the test failed and the admin
     // then cancels instead of fixing it.
     printerConfig = prevConfig;
   }
 }
 
 async function savePrinterSettings() {
-  const kitchenIp = document.getElementById('ps-kitchen-ip')?.value.trim() || '';
-  const kitchenPort = parseInt(document.getElementById('ps-kitchen-port')?.value, 10) || 9100;
-  const billingIp = document.getElementById('ps-billing-ip')?.value.trim() || '';
-  const billingPort = parseInt(document.getElementById('ps-billing-port')?.value, 10) || 9100;
-
   printerConfig = {
-    kitchen: { ip: kitchenIp, port: kitchenPort },
-    billing: { ip: billingIp, port: billingPort },
+    kitchen: readPrinterFormValues('kitchen'),
+    billing: readPrinterFormValues('billing'),
   };
   await pushPrinterConfig();
   closeModal();
