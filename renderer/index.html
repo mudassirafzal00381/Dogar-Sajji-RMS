@@ -2805,6 +2805,114 @@ async function saveOrderEdit(id){
   if(note!==undefined)o.note=note;
   await saveToLocal();
   closeModal();showSection('orders');toast('Order updated ✓');
+  // Notify the kitchen with the full revised order — not just what changed —
+  // so they're working off one complete, current ticket rather than trying
+  // to reconcile a diff against the one already on their spike.
+  printKitchenUpdateTicket(id);
+}
+
+// Printed whenever an already-submitted order is edited (Save Changes in
+// the Live Orders Queue). This never creates or duplicates an order — it's
+// purely a reprint of the existing order's current, full item list, with a
+// prominent "ORDER UPDATED" marker so kitchen staff don't mistake it for a
+// second, separate order.
+function printKitchenUpdateTicket(id){
+  const o=orders.find(x=>x.id===id);
+  if(!o){toast('Order not found','error');return;}
+  const now=new Date().toLocaleString('en-PK');
+
+  const htmlContent = `<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
+  <title>Order Updated - ${o.id}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+    @page { size: 80mm portrait; margin: 0; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      color: #000 !important;
+      background: #fff;
+      width: 80mm;
+      padding: 4mm 4mm 8mm 4mm;
+      -webkit-font-smoothing: antialiased;
+      print-color-adjust: exact;
+    }
+    .center { text-align: center; }
+    .bold { font-weight: bold; }
+    .divider { border-top: 1px dashed #000; margin: 5px 0; }
+    .divider-solid { border-top: 2px solid #000; margin: 5px 0; }
+    .status-box {
+      border: 3px double #000;
+      text-align: center;
+      padding: 5px;
+      font-size: 15px;
+      font-weight: bold;
+      margin: 6px 0;
+      letter-spacing: 1.5px;
+    }
+    .item-row { display:flex; align-items:baseline; gap:6px; margin: 4px 0; font-size:14px; font-weight:bold; }
+    .item-qty { font-size:18px; font-weight:900; min-width:28px; }
+    .note-box { border:2px solid #000; padding:5px 7px; margin-top:6px; font-size:12px; }
+    @media print { button { display:none; } }
+  </style>
+  </head><body>
+
+  <!-- LOGO HEADER -->
+  <div class="center bold" style="font-size:11px;letter-spacing:3px;border-bottom:2px solid #000;padding-bottom:4px;margin-bottom:4px">Dogar Sajji & Restaurant</div>
+  <div class="center bold" style="font-size:11px;margin-bottom:2px">*** KITCHEN TICKET ***</div>
+  <div class="center" style="font-size:10px;color:#333">${now}</div>
+
+  <div class="divider-solid"></div>
+
+  <!-- TABLE & ORDER INFO -->
+  <div class="center bold" style="font-size:22px;letter-spacing:2px;margin:4px 0">${(o.orderType||'Dine-in')==='Dine-in'?'TABLE '+o.table:(o.orderType==='Delivery'?'DELIVERY':'TAKEAWAY')}</div>
+  <div class="center" style="font-size:11px;margin-bottom:4px">Order: ${o.id} &nbsp;&bull;&nbsp; ${o.time}</div>
+  ${o.orderType==='Delivery'?`<div class="center bold" style="font-size:11px;margin-bottom:4px">${o.customerPhone||'—'}${o.customerAddress?' &bull; '+o.customerAddress:''}</div>`:''}
+
+  <div class="status-box">⚠ ORDER UPDATED ⚠<br><span style="font-size:11px;letter-spacing:1px">FULL REVISED ORDER BELOW</span></div>
+  <div class="divider"></div>
+
+  <!-- ITEMS: the complete, current order — not a diff of what changed -->
+  ${o.items.map(i=>`
+    <div class="item-row">
+      <span class="item-qty">${i.qty}×</span>
+      <span>${i.name}</span>
+    </div>
+    ${i.desc ? `<div style="font-size:11px;font-weight:normal;padding-left:34px;margin-bottom:4px;color:#000">↳ ${i.desc}</div>` : ''}`).join('')}
+
+  ${o.note?`
+  <div class="divider"></div>
+  <div class="note-box">
+    <div class="bold" style="font-size:11px;margin-bottom:2px">⚠ SPECIAL INSTRUCTIONS:</div>
+    <div>${o.note}</div>
+  </div>`:''}
+
+  <div class="divider-solid" style="margin-top:8px"></div>
+  <div class="center bold" style="font-size:11px;margin-top:4px">Staff: ${o.waiter || 'Counter'}</div>
+  <div class="center" style="font-size:10px;margin-top:2px">— End of Ticket —</div>
+  </body></html>`;
+
+  const printerDevice = localStorage.getItem('hfc_printer_device') || '';
+  const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
+
+  if (window.api && window.api.printReceipt) {
+    window.api.printReceipt(htmlContent, {
+      silent: silentPrint,
+      deviceName: printerDevice || undefined
+    }).then(res => {
+      if (res && res.success) {
+        toast(`Kitchen notified of order update for ${orderLabel(o)} ✓`);
+      } else {
+        toast(`Order update ticket sent to printer ✓`);
+      }
+    }).catch(() => {
+      fallbackPrintWindow(htmlContent, false);
+    });
+  } else {
+    fallbackPrintWindow(htmlContent, false);
+  }
 }
 
 // ── KITCHEN ──
@@ -2953,31 +3061,20 @@ function printKitchenTicket(id){
 // ── BILLING STATE & UX HELPERS ──
 const billingState = {
   paymentMethod: 'Cash',
-  discountType: 'pct', // 'pct' (%) or 'flat' (Rs) — see computeDiscount()
-  discountValue: 0,
+  discountValue: 0, // flat Rs amount off the subtotal — see computeDiscount()
   deliveryCharge: 0,
   perHeadRate: 0,
   perHeadPersons: 1,
   cashReceived: ''
 };
 
-// Discount can be entered as a % of the subtotal or as a flat Rs amount.
-// Whichever mode is used, this returns the actual Rs amount to subtract
-// (clamped so it can never exceed the subtotal) plus the equivalent % —
-// the equivalent % is what gets persisted to salesLedger.discount so
-// existing reports/CSV exports (which are labeled "Discount %") keep
-// meaning the same thing regardless of how the discount was entered.
-function computeDiscount(sub, rawValue, type) {
+// Discount is always a flat Rs amount off the subtotal (clamped so it can
+// never exceed the subtotal itself).
+function computeDiscount(sub, rawValue) {
   const val = Math.max(0, Number(rawValue) || 0);
   sub = Math.max(0, Number(sub) || 0);
-  if (type === 'flat') {
-    const amt = Math.min(val, sub);
-    const pct = sub > 0 ? Math.round((amt / sub) * 10000) / 100 : 0;
-    return { amt: Math.round(amt), pct, label: `Rs ${Math.round(amt).toLocaleString()}` };
-  }
-  const pct = Math.min(val, 100);
-  const amt = Math.round(sub * pct / 100);
-  return { amt, pct, label: `${pct}%` };
+  const amt = Math.min(val, sub);
+  return { amt: Math.round(amt), label: `Rs ${Math.round(amt).toLocaleString()}` };
 }
 
 function syncBillingStateFromUI() {
@@ -2995,7 +3092,6 @@ function syncBillingStateFromUI() {
 
 function resetBillingState() {
   billingState.paymentMethod = 'Cash';
-  billingState.discountType = 'pct';
   billingState.discountValue = 0;
   billingState.deliveryCharge = 0;
   billingState.perHeadRate = 0;
@@ -3003,30 +3099,12 @@ function resetBillingState() {
   billingState.cashReceived = '';
 }
 
-// Switches the discount entry mode and swaps the input/presets in place
-// (rather than re-rendering the whole Billing section, which would lose
-// focus / in-progress values in the other fields).
-function setDiscountType(type) {
-  billingState.discountType = type === 'flat' ? 'flat' : 'pct';
-  billingState.discountValue = 0;
-  const container = document.getElementById('discount-block');
-  if (container) container.innerHTML = renderDiscountBlock();
-  updateLiveBill();
-}
-
 function renderDiscountBlock() {
-  const isPct = (billingState.discountType || 'pct') !== 'flat';
   return `
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.4rem">
-    <label style="font-size:.75rem; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; font-weight:600">
-      🏷️ Discount
-    </label>
-    <div style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden">
-      <button type="button" class="btn-xs" style="padding:.2rem .6rem; font-size:.72rem; border:none; cursor:pointer; font-weight:700; background:${isPct ? 'var(--gold)' : 'var(--surface2)'}; color:${isPct ? 'var(--dark)' : 'var(--text2)'}" onclick="setDiscountType('pct')">%</button>
-      <button type="button" class="btn-xs" style="padding:.2rem .6rem; font-size:.72rem; border:none; cursor:pointer; font-weight:700; background:${!isPct ? 'var(--gold)' : 'var(--surface2)'}; color:${!isPct ? 'var(--dark)' : 'var(--text2)'}" onclick="setDiscountType('flat')">Rs</button>
-    </div>
-  </div>
-  <input class="input-field" style="width:100%; font-size:1rem; font-weight:600" type="number" id="discount-value" placeholder="0" value="${billingState.discountValue || 0}" min="0" ${isPct ? 'max="100"' : ''} oninput="syncBillingStateFromUI(); updateLiveBill();">
+  <label style="font-size:.65rem; color:var(--text2); display:block; margin-bottom:.25rem; text-transform:uppercase; letter-spacing:.5px; font-weight:600">
+    🏷️ Discount (Rs)
+  </label>
+  <input class="input-field" style="width:100%; font-size:.85rem; font-weight:600; padding:.4rem .6rem" type="number" id="discount-value" placeholder="0" value="${billingState.discountValue || 0}" min="0" oninput="syncBillingStateFromUI(); updateLiveBill();">
   `;
 }
 
@@ -3163,7 +3241,7 @@ function renderPaymentOptionsFields(){
       <input class="input-field" style="width:100%; font-size:.85rem; font-weight:600; padding:.4rem .6rem" type="number" id="delivery-charge" placeholder="0" value="${billingState.deliveryCharge || 0}" min="0" oninput="syncBillingStateFromUI(); updateLiveBill();">
     </div>
 
-    <!-- Discount (% or flat Rs — toggle in renderDiscountBlock) -->
+    <!-- Discount (flat Rs — see renderDiscountBlock) -->
     <div id="discount-block" style="margin-top:.5rem; padding-top:.5rem; border-top:1px dashed var(--border)">
       ${renderDiscountBlock()}
     </div>
@@ -3308,7 +3386,7 @@ function generateMergedBill(billKey,type,quiet=false){
   const items=Object.values(mergedItems);
   const sub=items.reduce((a,i)=>a+(Number(i.qty)||0)*(Number(i.price)||0),0);
   const discRaw=parseFloat(document.getElementById('discount-value')?.value)||0;
-  const discInfo=computeDiscount(sub, discRaw, billingState.discountType || 'pct');
+  const discInfo=computeDiscount(sub, discRaw);
   const discAmt=discInfo.amt;
   const perHeadRate=parseFloat(document.getElementById('per-head-rate')?.value)||0;
   const perHeadPersons=parseInt(document.getElementById('per-head-persons')?.value,10)||0;
@@ -3406,7 +3484,7 @@ function buildReceiptHtml(isCustomerInvoice = false) {
   const items = Object.values(mergedItems);
   const sub = items.reduce((a,i)=>a+i.qty*i.price, 0);
   const discRaw = parseFloat(document.getElementById('discount-value')?.value)||0;
-  const discInfo = computeDiscount(sub, discRaw, billingState.discountType || 'pct');
+  const discInfo = computeDiscount(sub, discRaw);
   const discAmt = discInfo.amt;
   const perHeadRate = parseFloat(document.getElementById('per-head-rate')?.value)||0;
   const perHeadPersons = parseInt(document.getElementById('per-head-persons')?.value,10)||0;
@@ -3767,7 +3845,7 @@ async function exportSalesCSV() {
     toast('No sales ledger data available to export', 'error');
     return;
   }
-  let csv = 'Sales ID,Date,Order Type,Table/Ref,Customer Phone,Customer Address,Items Summary,Subtotal,Discount %,Per Head,Total Amount (Rs),Payment Method,Waiter\n';
+  let csv = 'Sales ID,Date,Order Type,Table/Ref,Customer Phone,Customer Address,Items Summary,Subtotal,Discount (Rs),Per Head,Total Amount (Rs),Payment Method,Waiter\n';
   salesLedger.forEach(s => {
     const itemSummary = (s.items || []).map(i => `${i.qty}x ${i.name}`).join(' | ').replace(/"/g, '""');
     const tableRef = s.table ? `Table ${s.table}` : (s.orderType || 'Order');
@@ -3994,7 +4072,7 @@ async function finalizeSale(){
   group.forEach(o=>{ (o.items || []).forEach(i=>{ if(mergedItems[i.name])mergedItems[i.name].qty+=(Number(i.qty)||0); else mergedItems[i.name]={...i, qty: Number(i.qty)||0, price: Number(i.price)||0}; }); });
   const items=Object.values(mergedItems);
   const sub=items.reduce((a,i)=>a+(Number(i.qty)||0)*(Number(i.price)||0),0);
-  const discInfo=computeDiscount(sub, discRaw, billingState.discountType || 'pct');
+  const discInfo=computeDiscount(sub, discRaw);
   const discAmt=discInfo.amt;
   const total=Number(Math.max(0, sub-discAmt+perHead+deliveryCharge)||0);
   const changeReturn=cashReceived>=total ? (cashReceived-total) : 0;
@@ -4009,7 +4087,7 @@ async function finalizeSale(){
     items, total: Number(total || 0),
     payment:selectedPayment,
     waiter:group[0]?.waiter||currentUser,
-    discount:discInfo.pct, perHead, deliveryCharge, cashReceived, changeReturn,
+    discount:discInfo.amt, perHead, deliveryCharge, cashReceived, changeReturn,
     closed: 0, closeoutId: ''
   });
 
