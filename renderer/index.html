@@ -5819,8 +5819,14 @@ async function validateSupabaseConnection() {
 }
 
 function initSupabaseFromStorage() {
-  const rawUrl = localStorage.getItem('dogar_supabase_url') || window.SUPABASE_URL || '';
-  const key = localStorage.getItem('dogar_supabase_key') || window.SUPABASE_KEY || '';
+  let rawUrl = localStorage.getItem('dogar_supabase_url') || window.SUPABASE_URL || '';
+  let key = localStorage.getItem('dogar_supabase_key') || window.SUPABASE_KEY || '';
+  if (key && (key.startsWith('sb_publishable_') || !key.startsWith('eyJ'))) {
+    if (window.SUPABASE_KEY && window.SUPABASE_KEY.startsWith('eyJ')) {
+      localStorage.removeItem('dogar_supabase_key');
+      key = window.SUPABASE_KEY;
+    }
+  }
   const url = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
   const supaLib = window.supabase || (typeof supabase !== 'undefined' ? supabase : null);
   if (supaLib && url && key && url.includes('supabase.co')) {
